@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "aestival",
+  "version": "1.0.0",
+  "builtin-baseline": "1f5e0348089e8a9b187f57d42866ebc871e815da",
+  "dependencies": [
+    { "name": "boost-asio", "version>=": "1.91.0#0" },
+    { "name": "boost-beast", "version>=": "1.91.0#0" },
+    { "name": "boost-locale", "version>=": "1.91.0#0" },
+    { "name": "boost-regex", "version>=": "1.91.0#0" },
+    { "name": "openssl", "version>=": "3.5.2#0" },
+    { "name": "nlohmann-json", "version>=": "3.11.3#0" },
+    { "name": "magic-enum", "version>=": "0.9.7#0" },
+    { "name": "sqlite3", "version>=": "3.51.0#0" }
+  ]
+}

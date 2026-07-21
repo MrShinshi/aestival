@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            compiler: msvc
+            build_type: Debug
+          - os: windows-latest
+            compiler: msvc
+            build_type: Release
+          - os: windows-latest
+            compiler: clang-cl
+            build_type: Release
+          - os: ubuntu-latest
+            compiler: gcc
+            build_type: Release
+          - os: ubuntu-latest
+            compiler: clang
+            build_type: Release
+          - os: macos-latest
+            compiler: apple-clang
+            build_type: Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows' && matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Clang (Linux)
+        if: runner.os == 'Linux' && matrix.compiler == 'clang'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang
+
+      - name: Setup GCC 14 (Linux)
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++-14
+          echo "CC=gcc-14" >> $GITHUB_ENV
+          echo "CXX=g++-14" >> $GITHUB_ENV
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/build/vcpkg_installed
+          key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ matrix.compiler }}-
+
+      - name: Install CMake 4.3.3 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = '4.3.3'
+          $url = "https://github.com/Kitware/CMake/releases/download/v$version/cmake-$version-windows-x86_64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "cmake-$version-windows-x86_64.zip"
+          $root = Join-Path $env:RUNNER_TEMP "cmake-$version"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $root -Force
+          "$root\cmake-$version-windows-x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install CMake 4.3.3 (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=4.3.3
+          case "${{ runner.os }}" in
+            Linux)
+              archive="cmake-$version-linux-x86_64.tar.gz"
+              dir="cmake-$version-linux-x86_64"
+              ;;
+            macOS)
+              archive="cmake-$version-macos-universal.tar.gz"
+              dir="cmake-$version-macos-universal"
+              ;;
+            *)
+              echo "Unsupported runner.os=${{ runner.os }}"
+              exit 1
+              ;;
+          esac
+          url="https://github.com/Kitware/CMake/releases/download/v$version/$archive"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/$archive"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$dir/bin" >> "$GITHUB_PATH"
+
+      - name: Verify CMake
+        shell: bash
+        run: cmake --version
+
+      - name: Prepare vcpkg
+        shell: bash
+        run: |
+          if [[ -n "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
+            printf 'VCPKG_ROOT=%s\n' "$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+            if [[ -d "$VCPKG_INSTALLATION_ROOT/.git" ]]; then
+              git -C "$VCPKG_INSTALLATION_ROOT" reset --hard
+              git -C "$VCPKG_INSTALLATION_ROOT" clean -fdx
+              git -C "$VCPKG_INSTALLATION_ROOT" fetch origin master --tags --prune
+              git -C "$VCPKG_INSTALLATION_ROOT" checkout -B master FETCH_HEAD
+            fi
+          fi
+
+      - name: Configure
+        shell: bash
+        run: |
+          GENERATOR_ARGS=()
+
+          case "${{ runner.os }}" in
+            Windows)
+              case "${{ matrix.compiler }}" in
+                clang-cl) GENERATOR_ARGS+=(-T ClangCL) ;;
+              esac
+              ;;
+            Linux)
+              case "${{ matrix.compiler }}" in
+                clang)
+                  GENERATOR_ARGS+=(-DCMAKE_C_COMPILER=clang)
+                  GENERATOR_ARGS+=(-DCMAKE_CXX_COMPILER=clang++)
+                  ;;
+                gcc)
+                  GENERATOR_ARGS+=(-DCMAKE_C_COMPILER=gcc-14)
+                  GENERATOR_ARGS+=(-DCMAKE_CXX_COMPILER=g++-14)
+                  ;;
+              esac
+              ;;
+          esac
+
+          cmake -B build \
+            -DCMAKE_PROJECT_NAME=aestival \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_BOOTSTRAPPED=ON \
+            "${GENERATOR_ARGS[@]}"
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows' && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aestival-windows-${{ matrix.compiler }}
+          path: bin/aestival.exe
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux' && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aestival-linux-${{ matrix.compiler }}
+          path: bin/aestival
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS' && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aestival-macos-${{ matrix.compiler }}
+          path: bin/aestival

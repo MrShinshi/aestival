@@ -1,0 +1,33 @@
+# aestival — 绯英 · EditorConfig
+# https://editorconfig.org
+
+root = true
+
+# ─── 通用 ────────────────────────────────────────────────────────────────
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+insert_final_newline     = true
+trim_trailing_whitespace = true
+indent_style             = space
+indent_size              = 4
+
+# ─── C++ 源文件 ──────────────────────────────────────────────────────────
+
+[*.{h,hpp,cpp,cxx,cc}]
+file_header_template = /*\n * aestival — 绯英\n * Copyright (c) 2026 MrShinshi\n * Licensed under MIT\n */
+
+# ─── Markdown ────────────────────────────────────────────────────────────
+
+[*.md]
+trim_trailing_whitespace = false
+
+# ─── JSON / CMake ────────────────────────────────────────────────────────
+
+[*.json]
+indent_size = 2
+
+[CMakeLists.txt]
+indent_style = tab
+indent_size = 4

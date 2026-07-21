@@ -1,0 +1,22 @@
+{
+  "qq": {
+    "app_id": "",
+    "app_secret": ""
+  },
+  "deepseek": {
+    "api_key": "",
+    "model": "deepseek-chat",
+    "user_token": "",
+    "waf_cookie": ""
+  },
+  "admins": [
+    "793F1ADD1643A00C76554D258614EC83"
+  ],
+  "mode": "agent",
+  "self_iteration": {
+    "enabled": false,
+    "interval_hours": 24,
+    "min_conversations": 10,
+    "claude_path": "claude"
+  }
+}

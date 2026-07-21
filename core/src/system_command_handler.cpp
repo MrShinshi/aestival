@@ -123,7 +123,7 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 							for (size_t i = 0; i < models.size(); ++i) {
 								if (i)
 									md << ", ";
-								md << "`" << models[i].get<std::string>() << "`";
+								md << "`" << (models[i].is_string() ? models[i].get<std::string>() : "unknown") << "`";
 							}
 							md << "\n";
 						}

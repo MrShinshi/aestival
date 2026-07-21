@@ -412,12 +412,16 @@ evaluation_report self_iteration_engine::evaluate(std::vector<conversation_sampl
 	report.safety_concern = j.value("safety_concern", false);
 
 	if (j.contains("issues") && j["issues"].is_array()) {
-		for (auto const& iss : j["issues"])
-			report.issues.push_back(iss.get<std::string>());
+		for (auto const& iss : j["issues"]) {
+			if (iss.is_string())
+				report.issues.push_back(iss.get<std::string>());
+		}
 	}
 	if (j.contains("suggestions") && j["suggestions"].is_array()) {
-		for (auto const& sug : j["suggestions"])
-			report.suggestions.push_back(sug.get<std::string>());
+		for (auto const& sug : j["suggestions"]) {
+			if (sug.is_string())
+				report.suggestions.push_back(sug.get<std::string>());
+		}
 	}
 
 	return report;

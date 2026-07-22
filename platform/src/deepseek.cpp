@@ -219,20 +219,20 @@ static nlohmann::json web_api_get(std::string_view host, std::string_view path, 
 
 } // namespace
 
-nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								  int64_t end_sec, bool verify_tls) {
+nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int year,
+								  int month, bool verify_tls) {
 	std::ostringstream path;
-	path << "/api/v0/usage/by_api_key/amount"
-		 << "?start=" << start_sec << "&end=" << end_sec << "&tz=0";
+	path << "/api/v0/usage/amount"
+		 << "?year=" << year << "&month=" << month";
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }
 
-nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								int64_t end_sec, bool verify_tls) {
+nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int year,
+								int month, bool verify_tls) {
 	std::ostringstream path;
-	path << "/api/v0/usage/by_api_key/cost"
-		 << "?start=" << start_sec << "&end=" << end_sec << "&tz=0";
+	path << "/api/v0/usage/cost"
+		 << "?year=" << year << "&month=" << month";
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }

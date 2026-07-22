@@ -11,6 +11,7 @@
 #   ./deploy.sh                    # deploy from latest CI run on current branch
 #   ./deploy.sh --branch main      # deploy from a different branch's CI
 #   ./deploy.sh --restart          # also restart the systemd service
+#   ./deploy.sh --sync             # after PR merge: reset current branch to main
 #   ./deploy.sh --help             # show this help
 #
 # Environment variables (optional):
@@ -27,6 +28,7 @@ REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
 REMOTE_BIN="$REMOTE_DIR/bin"
 TEMP_DIR="$(mktemp -d)"
 RESTART_SVC=false
+SYNC_BRANCH=false
 BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo shinshi)"
 WORKFLOW="ci.yml"
 ARTIFACT_NAME="aestival-linux-gcc"
@@ -36,11 +38,25 @@ ARTIFACT_NAME="aestival-linux-gcc"
 while [ $# -gt 0 ]; do
   case "$1" in
     --restart)  RESTART_SVC=true; shift ;;
+    --sync)     SYNC_BRANCH=true; shift ;;
     --branch)   BRANCH="$2"; shift 2 ;;
-    --help)     sed -n '2,16p' "$0"; exit 0 ;;
+    --help)     sed -n '2,17p' "$0"; exit 0 ;;
     *)          echo "unknown flag: $1"; exit 1 ;;
   esac
 done
+
+# ── sync mode: reset current branch to main (post-PR cleanup) ───────────────
+
+if $SYNC_BRANCH; then
+  CURRENT="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+  echo ":: syncing '$CURRENT' -> origin/main..."
+  git -C "$REPO_ROOT" checkout main
+  git -C "$REPO_ROOT" pull
+  git -C "$REPO_ROOT" checkout "$CURRENT"
+  git -C "$REPO_ROOT" reset --hard main
+  echo ":: done — '$CURRENT' now at main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
+  exit 0
+fi
 
 cleanup() { rm -rf "$TEMP_DIR"; }
 trap cleanup EXIT

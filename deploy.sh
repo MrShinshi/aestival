@@ -50,11 +50,11 @@ done
 if $SYNC_BRANCH; then
   CURRENT="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
   echo ":: syncing '$CURRENT' -> origin/main..."
-  git -C "$REPO_ROOT" checkout main
-  git -C "$REPO_ROOT" pull
-  git -C "$REPO_ROOT" checkout "$CURRENT"
-  git -C "$REPO_ROOT" reset --hard main
-  echo ":: done — '$CURRENT' now at main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
+  git -C "$REPO_ROOT" fetch origin main
+  git -C "$REPO_ROOT" reset --hard origin/main
+  git -C "$REPO_ROOT" push --force origin "$CURRENT"
+  echo ":: done — '$CURRENT' force-pushed to main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
+  echo ":: tip: re-apply any local-only config (e.g. bot_config.json tokens)"
   exit 0
 fi
 

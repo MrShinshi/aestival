@@ -166,6 +166,26 @@ jobs:
           name: aestival-linux-${{ matrix.compiler }}
           path: bin/aestival
 
+      # ── deploy to production server (push only, Linux GCC Release) ──────
+      - name: Deploy to server
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc' && matrix.build_type == 'Release' && github.event_name == 'push'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
+          scp -i ~/.ssh/deploy_key bin/aestival shinshi@122.51.129.97:/home/shinshi/aestival/bin/aestival.new
+          scp -i ~/.ssh/deploy_key -r workspace/* shinshi@122.51.129.97:/home/shinshi/aestival/bin/workspace/
+
+          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+            mv /home/shinshi/aestival/bin/aestival.new /home/shinshi/aestival/bin/aestival
+            sudo systemctl restart aestival-bot.service
+          "
+
+          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
+
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS' && matrix.build_type == 'Release'
         uses: actions/upload-artifact@v4

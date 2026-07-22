@@ -180,10 +180,13 @@ jobs:
             export XDG_RUNTIME_DIR=/run/user/\$(id -u)
             systemctl --user stop aestival-bot.service || true
           "
-          # 2. push binary & workspace
+          # 2. package & push in one compressed pipe (13 MB → ~4 MB, single TCP)
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
-          scp -i ~/.ssh/deploy_key bin/aestival shinshi@122.51.129.97:/home/shinshi/aestival/bin/aestival.new
-          scp -i ~/.ssh/deploy_key -r workspace/* shinshi@122.51.129.97:/home/shinshi/aestival/bin/workspace/
+          tar -czf - -C bin aestival -C ../workspace . |
+            ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+              tar -xzf - -C /home/shinshi/aestival/bin &&
+              mv /home/shinshi/aestival/bin/aestival /home/shinshi/aestival/bin/aestival.new
+            "
 
           # 3. atomic swap + start
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "

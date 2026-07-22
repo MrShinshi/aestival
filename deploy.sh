@@ -89,7 +89,7 @@ fi
 chmod +x "$BINARY"
 echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 
-# ── 2. deploy binary (stop → scp → mv → start to avoid ETXTBUSY) ────────
+# ── 2. deploy binary & workspace (single compressed pipe) ──────────────────
 
 if $RESTART_SVC; then
   echo ":: [2/4] stopping service..."
@@ -97,12 +97,20 @@ if $RESTART_SVC; then
   sleep 1
 fi
 
-echo ":: [3/4] deploying binary..."
-scp "$BINARY" "$TARGET:$REMOTE_BIN/aestival.new"
+echo ":: [3/4] deploying binary & workspace (tar.gz pipe)..."
+# Single compressed transfer: binary + workspace in one shot (~4 MB instead of 13+)
+ssh "$TARGET" "mkdir -p $REMOTE_BIN/{config,contexts,workspace}"
+tar -czf - -C "$(dirname "$BINARY")" aestival -C "$REPO_ROOT/workspace" . |
+  ssh "$TARGET" "
+    tar -xzf - -C $REMOTE_BIN &&
+    mv $REMOTE_BIN/aestival $REMOTE_BIN/aestival.new
+  "
 
-# ── 3. deploy config & workspace ─────────────────────────────────────────────
+echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 
-echo ":: [4/4] deploying config & workspace..."
+# ── 3. config & contexts check ──────────────────────────────────────────────
+
+echo ":: [4/4] config..."
 
 # Config — seed from template only if none exists on the server.
 # Never overwrite an existing config (contains secrets).
@@ -114,11 +122,7 @@ ssh "$TARGET" "
   fi
 "
 
-# Workspace — always sync from the local repo (these evolve with the codebase).
-echo "   [sync] workspace/"
-scp -r "$REPO_ROOT/workspace/"* "$TARGET:$REMOTE_BIN/workspace/"
-
-# Contexts — never touch.
+echo "   [sync] workspace/ (included in pipe)"
 echo "   [keep] contexts/ (untouched)"
 
 # ── 4. finalise (atomic binary swap + optional restart) ──────────────────────

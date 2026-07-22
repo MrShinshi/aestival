@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [master, main, develop, shinshi]
   pull_request:
     branches: [master, main]
 
@@ -165,6 +165,37 @@ jobs:
         with:
           name: aestival-linux-${{ matrix.compiler }}
           path: bin/aestival
+
+      # ── deploy to production server (push only, Linux GCC Release) ──────
+      - name: Deploy to server
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc' && matrix.build_type == 'Release' && github.event_name == 'push' && github.ref_name == 'shinshi'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+
+          # 1. stop service before overwriting binary (avoids ETXTBUSY)
+          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            systemctl --user stop aestival-bot.service || true
+          "
+          # 2. package & push in one compressed pipe (13 MB → ~4 MB, single TCP)
+          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
+          tar -czf - -C bin aestival -C ../workspace . |
+            ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+              tar -xzf - -C /home/shinshi/aestival/bin &&
+              mv /home/shinshi/aestival/bin/aestival /home/shinshi/aestival/bin/aestival.new
+            "
+
+          # 3. atomic swap + start
+          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+            mv /home/shinshi/aestival/bin/aestival.new /home/shinshi/aestival/bin/aestival
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            systemctl --user start aestival-bot.service
+          "
+
+          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
 
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS' && matrix.build_type == 'Release'

@@ -68,11 +68,14 @@ static raw_chat_response send_chat_request(std::string_view api_key, std::string
 	req.set(http::field::content_type, "application/json");
 	req.set(http::field::accept, "application/json");
 	try {
-		req.body() = body.dump();
+		req.body() = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 	} catch (nlohmann::json::exception const&) {
-		for (auto& m : body["messages"])
-			m["content"] = platform::detail::sanitize_utf8(m["content"].get<std::string>());
-		req.body() = body.dump();
+		for (auto& m : body["messages"]) {
+			auto& c = m["content"];
+			if (c.is_string())
+				c = platform::detail::sanitize_utf8(c.get<std::string>());
+		}
+		req.body() = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 	}
 	req.prepare_payload();
 	http::write(stream, req);

@@ -25,11 +25,12 @@ std::string make_time_string();
 
 // ─── DeepSeek Platform usage API (web session auth, not API key) ───────
 // See docs: https://platform.deepseek.com/usage (reverse-engineered)
+// Endpoint: /api/v0/usage/{amount,cost}?year=YYYY&month=M
 
-nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								  int64_t end_sec, bool verify_tls);
+nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int year, int month,
+								  bool verify_tls);
 
-nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								int64_t end_sec, bool verify_tls);
+nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int year, int month,
+								bool verify_tls);
 
 } // namespace platform::deepseek

@@ -65,105 +65,124 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 		md << "## DeepSeek 用量\n\n";
 
 		if (d.llm && d.llm->provider_name() == "deepseek") {
-			int64_t end_sec =
-				std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
-					.count();
-			int64_t start_sec = end_sec - 30LL * 86400LL;
+			std::time_t now_tt = std::time(nullptr);
+			std::tm utc_tm;
+			std::memcpy(&utc_tm, std::gmtime(&now_tt), sizeof(std::tm));
+			int year  = utc_tm.tm_year + 1900;
+			int month = utc_tm.tm_mon  + 1;
 
 			try {
-				auto raw = d.llm->query_usage_json(start_sec, end_sec);
+				auto raw = d.llm->query_usage_json(year, month);
 				auto j = nlohmann::json::parse(raw, nullptr, false);
 				if (!j.is_discarded() && !j.contains("error")) {
 					auto const& amount = j["amount"];
-					auto const& series = amount["series"];
-					auto const& models = amount["models"];
-					if (series.is_array() && !series.empty()) {
+					if (!amount.is_object()) {
+						md << "_平台 API 返回数据格式异常（amount 非 object）_\n\n";
+						d.reply_to(msg, md.str());
+						return true;
+					}
+					auto const& days_arr = amount["days"];
+					auto const& total_arr = amount["total"];
+					if (days_arr.is_array() && !days_arr.empty()) {
 						md << "### Token 用量\n\n"
-						   << "| 日期 | 模型 | 请求 | 输出 | 缓存命中 | 缓存未命中 |\n"
-						   << "|------|------|------|------|----------|------------|\n";
+						   << "| 日期 | 模型 | 请求 | Prompt | Completion | 缓存命中 | 缓存未命中 |\n"
+						   << "|------|------|------|--------|------------|----------|------------|\n";
 
-						std::map<int64_t, std::map<std::string, std::tuple<int64_t, int64_t, int64_t, int64_t>>>
+						// day_model: date_str -> model -> tuple(req, prompt, compl, hit, miss)
+						std::map<std::string, std::map<std::string, std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>>>
 							day_model;
 
-						for (auto const& s : series) {
-							std::string model = s.value("model", "?");
-							for (auto const& b : s["buckets"]) {
-								int64_t t = b.value("time", 0LL);
-								auto const& u = b["usage"];
-								std::get<0>(day_model[t][model]) += u.value("REQUEST", 0);
-								std::get<1>(day_model[t][model]) += u.value("RESPONSE_TOKEN", 0);
-								std::get<2>(day_model[t][model]) += u.value("PROMPT_CACHE_HIT_TOKEN", 0);
-								std::get<3>(day_model[t][model]) += u.value("PROMPT_CACHE_MISS_TOKEN", 0);
+						for (auto const& day : days_arr) {
+							std::string date_str = day.value("date", "?");
+							auto const& data_arr = day["data"];
+							if (!data_arr.is_array()) continue;
+							for (auto const& model_entry : data_arr) {
+								std::string model = model_entry.value("model", "?");
+								auto const& usage_arr = model_entry["usage"];
+								if (!usage_arr.is_array()) continue;
+								for (auto const& u : usage_arr) {
+									std::string type = u.value("type", "");
+									int64_t val = 0;
+									try { val = std::stoll(u.value("amount", "0")); } catch (...) {}
+									if (type == "REQUEST")
+										std::get<0>(day_model[date_str][model]) += val;
+									else if (type == "PROMPT_TOKEN")
+										std::get<1>(day_model[date_str][model]) += val;
+									else if (type == "RESPONSE_TOKEN")
+										std::get<2>(day_model[date_str][model]) += val;
+									else if (type == "PROMPT_CACHE_HIT_TOKEN")
+										std::get<3>(day_model[date_str][model]) += val;
+									else if (type == "PROMPT_CACHE_MISS_TOKEN")
+										std::get<4>(day_model[date_str][model]) += val;
+								}
 							}
 						}
 
-						int64_t tr = 0, to = 0, th = 0, tm = 0;
-						for (auto const& [date, model_map] : day_model) {
-							std::time_t tt = static_cast<std::time_t>(date);
-							char dbuf[16];
-							std::strftime(dbuf, sizeof(dbuf), "%m-%d", std::gmtime(&tt));
+						int64_t tr = 0, tp = 0, tc = 0, th = 0, tm = 0;
+						for (auto const& [date_str, model_map] : day_model) {
 							for (auto const& [model, tup] : model_map) {
-								auto [req, out, hit, miss] = tup;
-								md << "| " << dbuf << " | `" << model << "`"
-								   << " | " << req << " | " << (out / 1000) << "K"
+								auto [req, prompt, cmpl, hit, miss] = tup;
+								md << "| " << date_str << " | `" << model << "`"
+								   << " | " << req
+								   << " | " << (prompt / 1000) << "K"
+								   << " | " << (cmpl / 1000) << "K"
 								   << " | " << (hit / 1000) << "K"
 								   << " | " << (miss / 1000) << "K |\n";
-								tr += req;
-								to += out;
-								th += hit;
-								tm += miss;
+								tr += req; tp += prompt; tc += cmpl; th += hit; tm += miss;
 							}
 						}
 
-						md << "\n**合计**: " << tr << " 请求, " << (to / 1000) << "K 输出, " << (th / 1000)
-						   << "K 缓存命中, " << (tm / 1000) << "K 缓存未命中\n";
+						md << "\n**合计**: " << tr << " 请求, " << (tp / 1000) << "K prompt, "
+						   << (tc / 1000) << "K compl, " << (th / 1000) << "K 缓存命中, "
+						   << (tm / 1000) << "K 缓存未命中\n";
 
-						if (models.is_array() && !models.empty()) {
+						// model list from total
+						if (total_arr.is_array() && !total_arr.empty()) {
 							md << "\n模型: ";
-							for (size_t i = 0; i < models.size(); ++i) {
-								if (i)
-									md << ", ";
-								md << "`" << models[i].get<std::string>() << "`";
+							bool first = true;
+							for (auto const& m : total_arr) {
+								if (!first) md << ", ";
+								first = false;
+								md << "`" << m.value("model", "?") << "`";
 							}
 							md << "\n";
 						}
 					}
 
-					auto const& cost_data = j["cost"]["data"];
-					if (cost_data.is_array() && !cost_data.empty()) {
+					auto const& cost_arr = j["cost"];
+					if (cost_arr.is_array() && !cost_arr.empty()) {
 						md << "### 费用\n\n"
-						   << "| 日期 | 模型 | 币种 | 费用 |\n"
-						   << "|------|------|------|------|\n";
+						   << "| 日期 | 模型 | 费用 (CNY) |\n"
+						   << "|------|------|-----------|\n";
 
-						for (auto const& cg : cost_data) {
-							auto const& cs = cg["series"];
-							if (!cs.is_array() || cs.empty())
-								continue;
-							std::string cur = cg.value("currency", "?");
-
-							double total_cost = 0;
-							for (auto const& s : cs) {
-								std::string model = s.value("model", "?");
-								for (auto const& b : s["buckets"]) {
-									double cv = 0;
-									try {
-										cv = std::stod(b.value("cost", "0"));
-									} catch (...) {
+						double grand_total = 0;
+						for (auto const& currency_group : cost_arr) {
+							auto const& cost_days = currency_group["days"];
+							if (!cost_days.is_array()) continue;
+							for (auto const& day : cost_days) {
+								std::string date_str = day.value("date", "?");
+								auto const& data_arr = day["data"];
+								if (!data_arr.is_array()) continue;
+								for (auto const& model_entry : data_arr) {
+									std::string model = model_entry.value("model", "?");
+									double day_cost = 0;
+									auto const& usage_arr = model_entry["usage"];
+									if (!usage_arr.is_array()) continue;
+									for (auto const& u : usage_arr) {
+										double v = 0;
+										try { v = std::stod(u.value("amount", "0")); } catch (...) {}
+										day_cost += v;
 									}
-									int64_t t = b.value("time", 0LL);
-									std::time_t tt = static_cast<std::time_t>(t);
-									char dbuf[16];
-									std::strftime(dbuf, sizeof(dbuf), "%m-%d", std::gmtime(&tt));
-									md << "| " << dbuf << " | `" << model << "`"
-									   << " | " << cur << " | " << cv << " |\n";
-									total_cost += cv;
+									md << "| " << date_str << " | `" << model << "`"
+									   << " | " << day_cost << " |\n";
+									grand_total += day_cost;
 								}
 							}
-							md << "\n**合计**: " << total_cost << " " << cur << "\n";
 						}
+						md << "\n**合计**: " << grand_total << " CNY\n";
 					}
 
-					if (!series.is_array() || series.empty())
+					if (!days_arr.is_array() || days_arr.empty())
 						md << "_平台 API 返回空数据_\n";
 				} else {
 					md << "_平台 API 不可用: " << j.value("error", "unknown") << "_\n\n";

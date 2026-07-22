@@ -55,7 +55,7 @@ struct model_client {
 
 	// Optional: query usage stats from the provider's dashboard API.
 	// Returns raw JSON from the platform (or "{}" if unsupported).
-	virtual std::string query_usage_json(int64_t start_sec, int64_t end_sec) const {
+	virtual std::string query_usage_json(int year, int month) const {
 		return "{}";
 	}
 

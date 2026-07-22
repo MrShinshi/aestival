@@ -86,13 +86,13 @@ struct deepseek_adapter : client::model_client {
 		return platform::deepseek::query_balance(key_, verify_tls_);
 	}
 
-	std::string query_usage_json(int64_t start_sec, int64_t end_sec) const override {
+	std::string query_usage_json(int year, int month) const override {
 		if (user_token_.empty() || waf_cookie_.empty())
-			return "{}";
+			return R"({"error":"未配置 DeepSeek Platform 登录态（user_token / waf_cookie），用量查询不可用。请从 platform.deepseek.com 抓取浏览器 session 填入 config/bot_config.json。"})";
 		try {
 			auto amount =
-				platform::deepseek::query_usage_amount(user_token_, waf_cookie_, start_sec, end_sec, verify_tls_);
-			auto cost = platform::deepseek::query_usage_cost(user_token_, waf_cookie_, start_sec, end_sec, verify_tls_);
+				platform::deepseek::query_usage_amount(user_token_, waf_cookie_, year, month, verify_tls_);
+			auto cost = platform::deepseek::query_usage_cost(user_token_, waf_cookie_, year, month, verify_tls_);
 			auto j = nlohmann::json::object();
 			j["amount"] = std::move(amount);
 			j["cost"] = std::move(cost);

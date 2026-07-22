@@ -53,11 +53,14 @@ static raw_chat_response send_chat_request(std::string_view api_key, std::string
 	req.set(http::field::content_type, "application/json");
 	req.set(http::field::accept, "application/json");
 	try {
-		req.body() = body.dump();
+		req.body() = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 	} catch (nlohmann::json::exception const&) {
-		for (auto& m : body["messages"])
-			m["content"] = platform::detail::sanitize_utf8(m["content"].get<std::string>());
-		req.body() = body.dump();
+		for (auto& m : body["messages"]) {
+			auto& c = m["content"];
+			if (c.is_string())
+				c = platform::detail::sanitize_utf8(c.get<std::string>());
+		}
+		req.body() = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 	}
 	req.prepare_payload();
 	http::write(stream, req);
@@ -208,25 +211,28 @@ static nlohmann::json web_api_get(std::string_view host, std::string_view path, 
 		throw std::runtime_error("DeepSeek Platform API biz_code=" + std::to_string(biz_code) +
 								 " biz_msg=" + data.value("biz_msg", ""));
 
-	return data["biz_data"];
+	auto biz = data["biz_data"];
+	if (biz.is_null())
+		return nlohmann::json::object();
+	return biz;
 }
 
 } // namespace
 
-nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								  int64_t end_sec, bool verify_tls) {
+nlohmann::json query_usage_amount(std::string_view user_token, std::string_view waf_cookie, int year,
+								  int month, bool verify_tls) {
 	std::ostringstream path;
-	path << "/api/v0/usage/by_api_key/amount"
-		 << "?start=" << start_sec << "&end=" << end_sec << "&tz=0";
+	path << "/api/v0/usage/amount"
+		 << "?year=" << year << "&month=" << month;
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }
 
-nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int64_t start_sec,
-								int64_t end_sec, bool verify_tls) {
+nlohmann::json query_usage_cost(std::string_view user_token, std::string_view waf_cookie, int year,
+								int month, bool verify_tls) {
 	std::ostringstream path;
-	path << "/api/v0/usage/by_api_key/cost"
-		 << "?start=" << start_sec << "&end=" << end_sec << "&tz=0";
+	path << "/api/v0/usage/cost"
+		 << "?year=" << year << "&month=" << month;
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }

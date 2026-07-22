@@ -223,7 +223,7 @@ nlohmann::json query_usage_amount(std::string_view user_token, std::string_view 
 								  int month, bool verify_tls) {
 	std::ostringstream path;
 	path << "/api/v0/usage/amount"
-		 << "?year=" << year << "&month=" << month";
+		 << "?year=" << year << "&month=" << month;
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }
@@ -232,7 +232,7 @@ nlohmann::json query_usage_cost(std::string_view user_token, std::string_view wa
 								int month, bool verify_tls) {
 	std::ostringstream path;
 	path << "/api/v0/usage/cost"
-		 << "?year=" << year << "&month=" << month";
+		 << "?year=" << year << "&month=" << month;
 
 	return web_api_get("platform.deepseek.com", path.str(), user_token, waf_cookie, verify_tls);
 }

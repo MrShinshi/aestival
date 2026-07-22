@@ -121,14 +121,14 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 						int64_t tr = 0, tp = 0, tc = 0, th = 0, tm = 0;
 						for (auto const& [date_str, model_map] : day_model) {
 							for (auto const& [model, tup] : model_map) {
-								auto [req, prompt, compl, hit, miss] = tup;
+								auto [req, prompt, cmpl, hit, miss] = tup;
 								md << "| " << date_str << " | `" << model << "`"
 								   << " | " << req
 								   << " | " << (prompt / 1000) << "K"
-								   << " | " << (compl / 1000) << "K"
+								   << " | " << (cmpl / 1000) << "K"
 								   << " | " << (hit / 1000) << "K"
 								   << " | " << (miss / 1000) << "K |\n";
-								tr += req; tp += prompt; tc += compl; th += hit; tm += miss;
+								tr += req; tp += prompt; tc += cmpl; th += hit; tm += miss;
 							}
 						}
 
@@ -188,8 +188,6 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 					md << "_平台 API 不可用: " << j.value("error", "unknown") << "_\n\n";
 				}
 			} catch (std::exception const& ex) {
-				md << "_平台 API 异常: " << ex.what() << "_\n\n";
-			}
 				md << "_平台 API 异常: " << ex.what() << "_\n\n";
 			}
 		} else {

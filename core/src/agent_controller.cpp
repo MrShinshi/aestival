@@ -19,6 +19,22 @@ static constexpr int k_default_search_result_count = 5;
 static constexpr int k_default_bili_hot_count = 10;
 static constexpr int k_policy_max_turns_per_convo = 50;
 static constexpr size_t k_max_tool_content = 4000;
+
+// Truncate at a valid UTF-8 boundary so the appended "[...truncated]"
+// marker never splits a multi-byte sequence in half.
+static size_t utf8_safe_truncate(std::string_view s, size_t max_len) {
+	if (s.size() <= max_len)
+		return s.size();
+	size_t pos = max_len;
+	while (pos > 0) {
+		auto c = static_cast<unsigned char>(s[pos]);
+		// Lead byte (>=0xC0) or ASCII (<0x80) — valid boundary.
+		if (c < 0x80 || c >= 0xC0)
+			break;
+		--pos;
+	}
+	return pos;
+}
 static constexpr int k_safety_limit = 10;
 
 static std::shared_ptr<client::chat_storage_backend> make_backend(std::string const& dir) {
@@ -262,7 +278,7 @@ void client::agent_controller::process_agent_message(message_event const& messag
 					chat_contexts_.append_assistant_with_tool_calls(cid, m.content, m.tool_calls_json);
 				} else if (m.role == "tool") {
 					auto capped = m.content.size() > k_max_tool_content
-									  ? m.content.substr(0, k_max_tool_content) + "\n[...truncated]"
+									  ? m.content.substr(0, utf8_safe_truncate(m.content, k_max_tool_content)) + "\n[...truncated]"
 									  : m.content;
 					chat_contexts_.append_tool(cid, m.tool_call_id, std::move(capped));
 				}

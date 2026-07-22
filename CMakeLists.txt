@@ -151,7 +151,11 @@ find_package(Boost REQUIRED COMPONENTS regex locale)
 find_package(OpenSSL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG QUIET)
+if(NOT unofficial-sqlite3_FOUND)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
+endif()
 
 set(PCH_HEADER ${CMAKE_SOURCE_DIR}/app/stdafx.h)
 
@@ -246,7 +250,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Boost::regex Boost::locale
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json magic_enum::magic_enum
-    unofficial::sqlite3::sqlite3
+    $<IF:$<BOOL:${unofficial-sqlite3_FOUND}>,unofficial::sqlite3::sqlite3,PkgConfig::SQLITE3>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

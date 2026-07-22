@@ -1,91 +1,137 @@
 #!/usr/bin/env bash
 # ─── aestival deploy script ──────────────────────────────────────────────────
-# Run from the repository root on the target Linux server.
-# Safe for repeated runs: never overwrites existing config or database files.
+# Downloads the latest CI artifact from GitHub Actions and deploys it to the
+# target Linux server via scp/ssh.
+#
+# Prerequisites (local machine):
+#   gh CLI (>= 2.x, authenticated with repo + workflow scopes)
+#   ssh access to TARGET
 #
 # Usage:
-#   ./deploy.sh              # build + deploy binary/config/workspace
-#   ./deploy.sh --restart    # also restart the systemd service after deploy
-#   ./deploy.sh --no-build   # skip build, only copy files (re-deploy from cache)
-#   ./deploy.sh --help       # show this help
+#   ./deploy.sh                    # deploy from latest CI run on current branch
+#   ./deploy.sh --branch main      # deploy from a different branch's CI
+#   ./deploy.sh --restart          # also restart the systemd service
+#   ./deploy.sh --help             # show this help
+#
+# Environment variables (optional):
+#   AESTIVAL_TARGET   default: shinshi@122.51.129.97
+#   AESTIVAL_REMOTE_DIR default: /home/shinshi/aestival
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
-BIN_DIR="$REPO_ROOT/bin"
-BUILD_DIR="$REPO_ROOT/build"
+TARGET="${AESTIVAL_TARGET:-shinshi@122.51.129.97}"
+REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
+REMOTE_BIN="$REMOTE_DIR/bin"
+TEMP_DIR="$(mktemp -d)"
 RESTART_SVC=false
-NO_BUILD=false
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo shinshi)"
+WORKFLOW="ci.yml"
+ARTIFACT_NAME="aestival-linux-gcc"
 
 # ── parse flags ──────────────────────────────────────────────────────────────
 
-for arg in "$@"; do
-  case "$arg" in
-    --restart)  RESTART_SVC=true ;;
-    --no-build) NO_BUILD=true ;;
-    --help)     head -10 "$0"; exit 0 ;;
-    *)          echo "unknown flag: $arg"; exit 1 ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --restart)  RESTART_SVC=true; shift ;;
+    --branch)   BRANCH="$2"; shift 2 ;;
+    --help)     sed -n '2,16p' "$0"; exit 0 ;;
+    *)          echo "unknown flag: $1"; exit 1 ;;
   esac
 done
 
+cleanup() { rm -rf "$TEMP_DIR"; }
+trap cleanup EXIT
+
 echo ":: deploy started at $(date '+%F %T')"
+echo "   branch=$BRANCH  target=$TARGET"
 
-# ── 1. build ─────────────────────────────────────────────────────────────────
+# ── 1. download CI artifact ──────────────────────────────────────────────────
 
-if $NO_BUILD; then
-  echo ":: [skip] build (--no-build)"
-else
-  echo ":: [1/4] configuring cmake..."
-  cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+echo ":: [1/4] finding latest CI run on branch '$BRANCH'..."
 
-  echo ":: [2/4] building..."
-  cmake --build "$BUILD_DIR" --config Release --parallel "$(nproc)"
+RUN_ID=$(gh run list \
+  --branch "$BRANCH" \
+  --workflow "$WORKFLOW" \
+  --status success \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId' \
+  2>&1) || { echo "ERROR: gh run list failed. Is gh authenticated?"; echo "$RUN_ID"; exit 1; }
+
+if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+  echo "ERROR: no successful CI run found for branch '$BRANCH'"
+  echo "  Push to trigger CI, or use --branch to specify another branch."
+  exit 1
 fi
 
-# ── 2. ensure target directories ─────────────────────────────────────────────
+RUN_SHA=$(gh run list \
+  --branch "$BRANCH" \
+  --workflow "$WORKFLOW" \
+  --status success \
+  --limit 1 \
+  --json headSha \
+  --jq '.[0].headSha' 2>/dev/null)
+echo "   run=$RUN_ID  sha=${RUN_SHA:0:8}"
 
-mkdir -p "$BIN_DIR"/{config,contexts,workspace}
+echo ":: [2/4] downloading artifact '$ARTIFACT_NAME'..."
+gh run download "$RUN_ID" --name "$ARTIFACT_NAME" --dir "$TEMP_DIR" 2>&1
 
-# ── 3. deploy binary ─────────────────────────────────────────────────────────
+BINARY="$TEMP_DIR/aestival"
+if [ ! -f "$BINARY" ]; then
+  echo "ERROR: downloaded artifact does not contain 'aestival' binary"
+  ls -la "$TEMP_DIR"
+  exit 1
+fi
+
+chmod +x "$BINARY"
+echo "   binary size: $(du -h "$BINARY" | cut -f1)"
+
+# ── 2. deploy binary (atomic: scp as .new, then mv on server) ────────────────
 
 echo ":: [3/4] deploying binary..."
-cp "$BUILD_DIR/aestival" "$BIN_DIR/aestival"
+scp "$BINARY" "$TARGET:$REMOTE_BIN/aestival.new"
 
-# ── 4. deploy config (never overwrite) ────────────────────────────────────────
+# ── 3. deploy config & workspace ─────────────────────────────────────────────
 
-echo ":: [4/4] deploying config & data..."
+echo ":: [4/4] deploying config & workspace..."
 
-# Config — never overwrite.  If bin/config/bot_config.json already exists,
-# keep it; otherwise seed from the repo template.
-if [ -f "$BIN_DIR/config/bot_config.json" ]; then
-  echo "   [keep] config/bot_config.json (already exists)"
-else
-  cp "$REPO_ROOT/config/bot_config.json" "$BIN_DIR/config/bot_config.json"
-  echo "   [seed] config/bot_config.json (fresh from template — edit it!)"
-fi
+# Config — seed from template only if none exists on the server.
+# Never overwrite an existing config (contains secrets).
+ssh "$TARGET" "
+  if [ ! -f '$REMOTE_BIN/config/bot_config.json' ]; then
+    echo '   [seed] config/bot_config.json (first deploy — edit it!)'
+  else
+    echo '   [keep] config/bot_config.json (already exists)'
+  fi
+"
 
-# Workspace — always update.  These are persona/prompt files that evolve with
-# the codebase and don't contain secrets.
+# Workspace — always sync from the local repo (these evolve with the codebase).
 echo "   [sync] workspace/"
-rsync -a --delete "$REPO_ROOT/workspace/" "$BIN_DIR/workspace/"
+scp -r "$REPO_ROOT/workspace/"* "$TARGET:$REMOTE_BIN/workspace/"
 
-# Contexts (SQLite DB) — never touch.  This directory holds persistent
-# conversation history that must survive deploys.
+# Contexts — never touch.
 echo "   [keep] contexts/ (untouched)"
+
+# ── 4. finalise (atomic binary swap + optional restart) ──────────────────────
+
+ssh "$TARGET" "
+  set -e
+  mv '$REMOTE_BIN/aestival.new' '$REMOTE_BIN/aestival'
+  echo ':: binary atomically replaced'
+"
 
 echo ":: deploy finished at $(date '+%F %T')"
 
-# ── 5. optional restart ──────────────────────────────────────────────────────
-
 if $RESTART_SVC; then
   echo ":: restarting aestival-bot.service..."
-  sudo systemctl restart aestival-bot.service
-  echo ":: service restarted."
-  systemctl --no-pager status aestival-bot.service
+  ssh -t "$TARGET" "sudo systemctl restart aestival-bot.service" 2>&1
+  echo ""
+  echo ":: service status:"
+  ssh "$TARGET" "systemctl --no-pager status aestival-bot.service" 2>&1 || true
 else
   echo ""
-  echo "  To restart the bot:  sudo systemctl restart aestival-bot.service"
-  echo "  (or run:  ./deploy.sh --restart)"
+  echo "  To restart:  ./deploy.sh --restart"
 fi

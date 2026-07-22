@@ -181,7 +181,8 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
             mv /home/shinshi/aestival/bin/aestival.new /home/shinshi/aestival/bin/aestival
-            sudo systemctl restart aestival-bot.service
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            systemctl --user restart aestival-bot.service
           "
 
           rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts

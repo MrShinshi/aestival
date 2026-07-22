@@ -127,10 +127,10 @@ echo ":: deploy finished at $(date '+%F %T')"
 
 if $RESTART_SVC; then
   echo ":: restarting aestival-bot.service..."
-  ssh -t "$TARGET" "sudo systemctl restart aestival-bot.service" 2>&1
+  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user restart aestival-bot.service" 2>&1
   echo ""
   echo ":: service status:"
-  ssh "$TARGET" "systemctl --no-pager status aestival-bot.service" 2>&1 || true
+  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true
 else
   echo ""
   echo "  To restart:  ./deploy.sh --restart"

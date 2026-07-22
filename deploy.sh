@@ -89,7 +89,13 @@ fi
 chmod +x "$BINARY"
 echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 
-# ── 2. deploy binary (atomic: scp as .new, then mv on server) ────────────────
+# ── 2. deploy binary (stop → scp → mv → start to avoid ETXTBUSY) ────────
+
+if $RESTART_SVC; then
+  echo ":: [2/4] stopping service..."
+  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
+  sleep 1
+fi
 
 echo ":: [3/4] deploying binary..."
 scp "$BINARY" "$TARGET:$REMOTE_BIN/aestival.new"
@@ -126,8 +132,8 @@ ssh "$TARGET" "
 echo ":: deploy finished at $(date '+%F %T')"
 
 if $RESTART_SVC; then
-  echo ":: restarting aestival-bot.service..."
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user restart aestival-bot.service" 2>&1
+  echo ":: starting aestival-bot.service..."
+  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user start aestival-bot.service" 2>&1
   echo ""
   echo ":: service status:"
   ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true

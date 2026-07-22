@@ -75,6 +75,11 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 				auto j = nlohmann::json::parse(raw, nullptr, false);
 				if (!j.is_discarded() && !j.contains("error")) {
 					auto const& amount = j["amount"];
+					if (!amount.is_object()) {
+						md << "_平台 API 返回数据格式异常（amount 非 object）_\n\n";
+						d.reply_to(msg, md.str());
+						return true;
+					}
 					auto const& series = amount["series"];
 					auto const& models = amount["models"];
 					if (series.is_array() && !series.empty()) {
@@ -87,9 +92,14 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 
 						for (auto const& s : series) {
 							std::string model = s.value("model", "?");
-							for (auto const& b : s["buckets"]) {
+							auto const& buckets = s["buckets"];
+							if (!buckets.is_array())
+								continue;
+							for (auto const& b : buckets) {
 								int64_t t = b.value("time", 0LL);
 								auto const& u = b["usage"];
+								if (!u.is_object())
+									continue;
 								std::get<0>(day_model[t][model]) += u.value("REQUEST", 0);
 								std::get<1>(day_model[t][model]) += u.value("RESPONSE_TOKEN", 0);
 								std::get<2>(day_model[t][model]) += u.value("PROMPT_CACHE_HIT_TOKEN", 0);
@@ -129,37 +139,43 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 						}
 					}
 
-					auto const& cost_data = j["cost"]["data"];
-					if (cost_data.is_array() && !cost_data.empty()) {
-						md << "### 费用\n\n"
-						   << "| 日期 | 模型 | 币种 | 费用 |\n"
-						   << "|------|------|------|------|\n";
+					auto const& cost_obj = j["cost"];
+					if (cost_obj.is_object()) {
+						auto const& cost_data = cost_obj["data"];
+						if (cost_data.is_array() && !cost_data.empty()) {
+							md << "### 费用\n\n"
+							   << "| 日期 | 模型 | 币种 | 费用 |\n"
+							   << "|------|------|------|------|\n";
 
-						for (auto const& cg : cost_data) {
-							auto const& cs = cg["series"];
-							if (!cs.is_array() || cs.empty())
-								continue;
-							std::string cur = cg.value("currency", "?");
+							for (auto const& cg : cost_data) {
+								auto const& cs = cg["series"];
+								if (!cs.is_array() || cs.empty())
+									continue;
+								std::string cur = cg.value("currency", "?");
 
-							double total_cost = 0;
-							for (auto const& s : cs) {
-								std::string model = s.value("model", "?");
-								for (auto const& b : s["buckets"]) {
-									double cv = 0;
-									try {
-										cv = std::stod(b.value("cost", "0"));
-									} catch (...) {
+								double total_cost = 0;
+								for (auto const& s : cs) {
+									std::string model = s.value("model", "?");
+									auto const& cb = s["buckets"];
+									if (!cb.is_array())
+										continue;
+									for (auto const& b : cb) {
+										double cv = 0;
+										try {
+											cv = std::stod(b.value("cost", "0"));
+										} catch (...) {
+										}
+										int64_t t = b.value("time", 0LL);
+										std::time_t tt = static_cast<std::time_t>(t);
+										char dbuf[16];
+										std::strftime(dbuf, sizeof(dbuf), "%m-%d", std::gmtime(&tt));
+										md << "| " << dbuf << " | `" << model << "`"
+										   << " | " << cur << " | " << cv << " |\n";
+										total_cost += cv;
 									}
-									int64_t t = b.value("time", 0LL);
-									std::time_t tt = static_cast<std::time_t>(t);
-									char dbuf[16];
-									std::strftime(dbuf, sizeof(dbuf), "%m-%d", std::gmtime(&tt));
-									md << "| " << dbuf << " | `" << model << "`"
-									   << " | " << cur << " | " << cv << " |\n";
-									total_cost += cv;
 								}
+								md << "\n**合计**: " << total_cost << " " << cur << "\n";
 							}
-							md << "\n**合计**: " << total_cost << " " << cur << "\n";
 						}
 					}
 

@@ -211,7 +211,10 @@ static nlohmann::json web_api_get(std::string_view host, std::string_view path, 
 		throw std::runtime_error("DeepSeek Platform API biz_code=" + std::to_string(biz_code) +
 								 " biz_msg=" + data.value("biz_msg", ""));
 
-	return data["biz_data"];
+	auto biz = data["biz_data"];
+	if (biz.is_null())
+		return nlohmann::json::object();
+	return biz;
 }
 
 } // namespace

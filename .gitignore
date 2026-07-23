@@ -21,3 +21,10 @@ CMakeUserPresets.json
 contexts/*.db
 /docs
 /out
+
+# node / npm
+node_modules/
+
+# webui build outputs
+webui/frontend/dist/
+webui/backend/dist/

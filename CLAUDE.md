@@ -120,6 +120,13 @@ CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过
 - `AGENTS.md`、`TOOLS.md`、`GROUP_RULES.md` — agent 行为规范
 - `IDENTITY.md`、`MEMORY.md`、`USER.md` — 上下文文件
 
+### 第五层：`webui/` — Web 管理面板
+
+- **`webui/backend/`** — Express.js + TypeScript 后端。提供 REST API，代理对 bot 管理 API (`core/src/management_api.cpp`) 的请求。使用 `better-sqlite3` 直接读取会话数据库。JWT 签发与验证在 `auth.ts` 中。
+- **`webui/frontend/`** — React 19 + TypeScript + Vite + Tailwind CSS v4 + TanStack React Query 前端。通过 Vite dev proxy（`localhost:3000`）或生产反向代理连接后端。路由：仪表盘、Agents 管理、会话查看、日志、设置。
+- **认证模型**：当前为 auto-login 模式（无 OAuth），`/api/ui/auth/token` 无条件签发 admin JWT。**Web UI 不得公开暴露**——至少应通过 Nginx `auth_basic` 或 IP 白名单保护。
+- **`webui/backend/dist/`** — 编译后的 JS 文件，与源码一起部署（CI 中运行 `tsc` 编译）。
+
 ## 关键模式
 
 ### 抽象接口 + 适配器
@@ -156,3 +163,60 @@ CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过
 ### 自迭代
 
 通过 `self-iterate` 命令手动调用，或在启用时按间隔自动触发。以子进程方式运行 Claude Code CLI（`claude -p`）——需要 `claude` 在 PATH 中。阶段：从 SQLite 采集对话样本→Claude 评估→判断分数是否需要改进→制定文件编辑计划→应用编辑 + git commit。C++ 源码文件永远不会被修改。
+
+### 信号处理
+
+`main.cpp` 中 `shutdown` 原子变量控制主循环退出。**信号处理器必须设置该原子变量**，不能留空——否则 systemd 的 SIGTERM 将超时并 SIGKILL，导致 SQLite WAL / WebSocket 连接可能损坏。
+
+```cpp
+std::atomic<bool> shutdown{false};
+std::signal(SIGINT,  [](int) { shutdown.store(true); });
+std::signal(SIGTERM, [](int) { shutdown.store(true); });
+```
+
+### 分离线程与生命周期安全
+
+**禁止**在分离线程中通过原始指针访问可能被销毁的对象。使用 `std::weak_ptr` / `std::shared_ptr` 追踪生命周期，或将回调整合到已有的 session 连接生命周期中。
+
+> 反例：`agent_registry.cpp` 中 `launch_agent` 的 3 秒延迟通知线程——若 agent 在此期间被 `remove_agent` 销毁，`inst_ptr` 成为悬空指针。
+
+### WebUI 后端：SQLite 资源管理
+
+`webui/backend/` 中使用 `better-sqlite3` 时，**必须**用 `try/finally` 确保 `db.close()` 在所有代码路径上被调用：
+
+```typescript
+const db = openDb(agentId);
+try {
+  const stmt = db.prepare('...');
+  return stmt.all();
+} finally {
+  db.close();
+}
+```
+
+若 `prepare()` 或 `all()` 抛出异常而 `close()` 不在 finally 中，将导致文件描述符泄漏。
+
+### WebUI 后端：路径遍历防护
+
+所有来自请求参数（`req.query`、`req.params`）的路径组件在拼接前**必须**清理：
+- 移除 `..` 序列、空字节、路径分隔符
+- 或使用字符白名单（如 `[a-zA-Z0-9_-]+`）
+
+> 反例：`conversations.ts` 中 `agentId` 直接拼接到 `${CONTEXTS_BASE}/${agentId}/conversations.db`，允许读取任意 `.db` 文件。
+
+### 管理 API 输入验证
+
+`management_api.cpp` 中接收 JSON 体的端点必须验证：
+- Agent ID 格式：限制字符白名单、长度上限
+- 路径字段（`storage_dir` 等）：拒绝 `..` 遍历序列
+- 字符串字段：设置合理的长度上限
+- 数值字段：检查范围和符号
+
+### `.gitignore` 要求
+
+仓库 `.gitignore` **必须**排除：
+- `node_modules/` — npm 依赖（禁止提交）
+- `webui/frontend/dist/` — 前端构建产物
+- `webui/backend/dist/` — 后端编译产物（如 CI 负责编译而非本地）
+
+`config/bot_config.json` 包含真实令牌——永远不要提交含真实密钥的配置文件。本地开发使用的真实配置通过环境变量或独立于仓库的 secrets 文件注入。

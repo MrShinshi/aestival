@@ -90,10 +90,16 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 
 client::global_config parse_global(nlohmann::json const& root) {
 	client::global_config g;
-	g.verify_tls = root.value("verify_tls", true);
-	g.log_file = root.value("log_file", "");
 
-	if (auto mgmt = root.find("management_api"); mgmt != root.end() && mgmt->is_object()) {
+	// Support both flat (legacy) and nested "global" object.
+	auto global = root.find("global");
+	bool has_nested = (global != root.end() && global->is_object());
+	auto const& src = has_nested ? *global : root;
+
+	g.verify_tls = src.value("verify_tls", true);
+	g.log_file = src.value("log_file", "");
+
+	if (auto mgmt = src.find("management_api"); mgmt != src.end() && mgmt->is_object()) {
 		g.management_api_enabled = mgmt->value("enabled", false);
 		g.management_listen = mgmt->value("listen", g.management_listen);
 		g.jwt_secret = mgmt->value("jwt_secret", "");

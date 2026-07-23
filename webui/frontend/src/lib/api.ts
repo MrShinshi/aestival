@@ -3,19 +3,12 @@
  * All requests include the JWT Bearer token.
  */
 
-import { getStoredToken } from './auth';
-
 const BASE = '/api/ui';
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = getStoredToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const opts: RequestInit = { method, headers, credentials: 'include' };
+  const opts: RequestInit = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
   if (body) opts.body = JSON.stringify(body);
-
-  const resp = await fetch(`${BASE}${path}`, opts);
+  const resp = await fetch(BASE + path, opts);
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ error: resp.statusText }));
     throw new Error(err.error || resp.statusText);
@@ -71,7 +64,10 @@ export const api = {
   status: () => request<BotStatus>('GET', '/status'),
 
   // Agents
-  agents: () => request<AgentInfo[]>('GET', '/agents'),
+  agents: async () => {
+    const r = await request<any>('GET', '/agents');
+    return (r.data || r) as AgentInfo[];  // bot API wraps in data[]
+  },
   createAgent: (cfg: Record<string, unknown>) => request<any>('POST', '/agents', cfg),
   deleteAgent: (id: string) => request<any>('DELETE', `/agents/${id}`),
   agentAction: (id: string, action: 'start' | 'stop') => request<any>('POST', `/agents/${id}/${action}`),

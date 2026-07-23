@@ -805,6 +805,22 @@ std::vector<client::chat_message> client::agent_controller::build_message_list(s
 	if (convo_id != "global") {
 		for (auto const& gm : global_system_)
 			messages.insert(messages.begin(), gm);
+
+		// Inject current date/time so the LLM knows what day/time it is.
+		{
+			auto now = std::chrono::system_clock::now();
+			auto tt = std::chrono::system_clock::to_time_t(now);
+			std::tm local_tm{};
+#ifdef _WIN32
+			localtime_s(&local_tm, &tt);
+#else
+			localtime_r(&tt, &local_tm);
+#endif
+			char buf[64];
+			std::strftime(buf, sizeof(buf), "%Y年%m月%d日 (%A) %H:%M:%S", &local_tm);
+			messages.insert(messages.begin(),
+							{"system", "", std::string("当前时间: ") + buf});
+		}
 	}
 	return messages;
 }

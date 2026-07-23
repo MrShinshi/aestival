@@ -68,7 +68,7 @@ struct agent_reach_client {
 	static std::string exec(std::string_view cmd, std::chrono::seconds timeout = std::chrono::seconds(30));
 
 	private:
-	bool verify_tls_;
+[[maybe_unused]] 	bool verify_tls_;
 
 	static bool command_available(std::string_view name);
 

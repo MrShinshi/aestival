@@ -129,7 +129,7 @@ client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& p
 
 		// P2-3: start worker pool
 		workers_.start([this](message_event const& m) { process_agent_message(m); },
-					   [this](message_event const& m) -> std::string { return actor_id_of(m); });
+					   [](message_event const& m) -> std::string { return actor_id_of(m); });
 	} catch (std::exception const& ex) {
 		log::error("[agent-controller] init failed: " + std::string(ex.what()));
 	} catch (...) {
@@ -201,7 +201,7 @@ void client::agent_controller::handle_message(message_event const& message) {
 								 state_mutex_,
 								 [this] { bot_.stop(); },
 								 on_self_iterate,
-								 [this](message_event const& m) -> std::string { return actor_id_of(m); },
+								 [](message_event const& m) -> std::string { return actor_id_of(m); },
 								 [this](message_event const& m, std::string_view c) -> bool { return reply_to(m, c); }};
 	if (system_command_handler::handle(n, message, cmd_deps))
 		return;

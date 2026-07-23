@@ -23,7 +23,7 @@ namespace {
 
 static constexpr int kDefaultSampleCount = 10;
 static constexpr double kImproveThreshold = 4.0; // avg score below this → improve
-static constexpr int kMinIntervalMinutes = 60;	 // min time between auto iterations
+[[maybe_unused]] static constexpr int kMinIntervalMinutes = 60;	 // min time between auto iterations
 static constexpr int kClaudeTimeoutSeconds = 120;
 static constexpr int k_default_query_limit = 50;
 static constexpr int k_min_samples = 3;

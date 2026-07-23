@@ -11,7 +11,6 @@
 
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import path from 'path';
 import { setupAuth, requireAuth } from './auth';
 import { setupProxy } from './proxy';
@@ -23,11 +22,6 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // Trust Nginx reverse proxy
 app.set('trust proxy', 1);
-
-// Security headers
-app.use(helmet({
-  contentSecurityPolicy: false, // handled by frontend meta tags
-}));
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',

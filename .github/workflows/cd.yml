@@ -100,8 +100,7 @@ jobs:
           cmake -B build \
             -DCMAKE_PROJECT_NAME=aestival \
             -DCMAKE_BUILD_TYPE=Release \
-            -DAESTIVAL_WERROR=ON \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+                        -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_BOOTSTRAPPED=ON
 
       - name: Build

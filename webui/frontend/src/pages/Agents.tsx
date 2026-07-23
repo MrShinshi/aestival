@@ -94,7 +94,7 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({ id: '', name: '', platform: 'qq' });
 
   const createMutation = useMutation({
-    mutationFn: (cfg: Record<string, unknown>) => api.createAgent(cfg),
+    mutationFn: (cfg: { id: string; name: string; platform?: string }) => api.createAgent(cfg),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       onClose();

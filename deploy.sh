@@ -49,6 +49,13 @@ done
 
 if $SYNC_BRANCH; then
   CURRENT="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+  # Safety: refuse to force-push protected branches.
+  case "$CURRENT" in
+    main|master)
+      echo "ERROR: refusing to force-push protected branch '$CURRENT'" >&2
+      exit 1
+      ;;
+  esac
   echo ":: syncing '$CURRENT' -> origin/main..."
   git -C "$REPO_ROOT" fetch origin main
   git -C "$REPO_ROOT" reset --hard origin/main

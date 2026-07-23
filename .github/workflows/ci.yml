@@ -59,8 +59,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/build/vcpkg_installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
+            vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-
             vcpkg-${{ runner.os }}-${{ matrix.compiler }}-
 
       - name: Install CMake 4.3.3 (Windows)
@@ -218,11 +219,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            webui/backend/package-lock.json
+            webui/frontend/package-lock.json
 
       # ── Backend ──────────────────────────────────────────────────────────
       - name: Install backend deps
         working-directory: webui/backend
-        run: npm install
+        run: npm ci
 
       - name: Build backend
         working-directory: webui/backend
@@ -231,7 +236,11 @@ jobs:
       # ── Frontend ─────────────────────────────────────────────────────────
       - name: Install frontend deps
         working-directory: webui/frontend
-        run: npm install
+        run: npm ci
+
+      - name: Type-check frontend
+        working-directory: webui/frontend
+        run: npx tsc --noEmit
 
       - name: Build frontend
         working-directory: webui/frontend

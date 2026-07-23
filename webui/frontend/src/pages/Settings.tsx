@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../lib/api';
+
 export default function Settings() {
   return (
     <div>
@@ -19,7 +21,7 @@ export default function Settings() {
         <p className="text-sm text-gray-400">
           aestival 管理面板 — 多 Agent Bot 管理、对话审查、日志查看。
         </p>
-        <p className="text-xs text-gray-600 mt-2">v1.0.0</p>
+        <p className="text-xs text-gray-600 mt-2">v{APP_VERSION}</p>
       </div>
     </div>
   );

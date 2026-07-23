@@ -1,19 +1,41 @@
 /**
  * Typed API client for the bot management API.
- * All requests include the JWT Bearer token.
+ * All requests include the JWT Bearer token via httpOnly cookie.
  */
 
 const BASE = '/api/ui';
+const TIMEOUT_MS = 30_000;
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const opts: RequestInit = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  const opts: RequestInit = {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    credentials: 'include',
+    signal: controller.signal,
+  };
   if (body) opts.body = JSON.stringify(body);
-  const resp = await fetch(BASE + path, opts);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: resp.statusText }));
-    throw new Error(err.error || resp.statusText);
+
+  try {
+    const resp = await fetch(BASE + path, opts);
+    clearTimeout(timer);
+
+    if (resp.status === 401) {
+      // Token expired — redirect to refresh
+      window.location.href = '/api/ui/auth/token';
+      throw new Error('authentication expired');
+    }
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      throw new Error(err.error || resp.statusText);
+    }
+    return resp.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return resp.json();
 }
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -21,7 +43,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export interface AgentInfo {
   id: string;
   name: string;
-  status: string;
+  status: 'running' | 'stopped' | 'starting' | 'stopping' | 'error';
   platform: string;
   enabled: boolean;
   message_count: number;
@@ -57,6 +79,15 @@ export interface ConversationDetail {
   }>;
 }
 
+export interface AgentCreateResult {
+  id: string;
+}
+
+export interface AgentActionResult {
+  id: string;
+  action: string;
+}
+
 // ── API methods ────────────────────────────────────────────────────────
 
 export const api = {
@@ -64,21 +95,29 @@ export const api = {
   status: () => request<BotStatus>('GET', '/status'),
 
   // Agents
-  agents: async () => {
-    const r = await request<any>('GET', '/agents');
-    return (r.data || r) as AgentInfo[];  // bot API wraps in data[]
+  agents: async (): Promise<AgentInfo[]> => {
+    const r = await request<{ data: AgentInfo[] } | AgentInfo[]>('GET', '/agents');
+    return Array.isArray(r) ? r : (r.data || []);
   },
-  createAgent: (cfg: Record<string, unknown>) => request<any>('POST', '/agents', cfg),
-  deleteAgent: (id: string) => request<any>('DELETE', `/agents/${id}`),
-  agentAction: (id: string, action: 'start' | 'stop') => request<any>('POST', `/agents/${id}/${action}`),
-  updateAgentConfig: (id: string, cfg: Record<string, unknown>) => request<any>('PUT', `/agents/${id}/config`, cfg),
+  createAgent: (cfg: { id: string; name: string; platform?: string }) =>
+    request<AgentCreateResult>('POST', '/agents', cfg),
+  deleteAgent: (id: string) =>
+    request<AgentActionResult>('DELETE', `/agents/${id}`),
+  agentAction: (id: string, action: 'start' | 'stop') =>
+    request<AgentActionResult>('POST', `/agents/${id}/${action}`),
+  updateAgentConfig: (id: string, cfg: { name?: string; enabled?: boolean; llm_provider?: string; workspace?: string; mode?: string }) =>
+    request<AgentActionResult>('PUT', `/agents/${id}/config`, cfg),
 
   // Logs
   logs: (level?: string, limit?: number) =>
-    request<LogResult>('GET', `/logs?level=${level || ''}&limit=${limit || 100}`),
+    request<LogResult>('GET', `/logs?level=${encodeURIComponent(level || '')}&limit=${limit || 100}`),
 
   // Conversations
   conversations: (limit?: number) =>
     request<{ conversations: ConversationSummary[] }>('GET', `/conversations?limit=${limit || 20}`),
-  conversation: (id: string) => request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}`),
+  conversation: (id: string) =>
+    request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}`),
 };
+
+/** Current app version — keep in sync with package.json. */
+export const APP_VERSION = '1.0.0';

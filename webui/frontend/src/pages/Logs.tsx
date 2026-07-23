@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
+const levelBadges: Record<string, { color: string; badge: string }> = {
+  ERROR: { color: 'text-red-400', badge: 'bg-red-900/50 text-red-400' },
+  WARN:  { color: 'text-yellow-400', badge: 'bg-yellow-900/50 text-yellow-400' },
+  INFO:  { color: 'text-blue-400', badge: 'bg-blue-900/50 text-blue-400' },
+  DEBUG: { color: 'text-gray-500', badge: 'bg-gray-800 text-gray-500' },
+};
+
 export default function Logs() {
   const [level, setLevel] = useState('');
   const [limit, setLimit] = useState(100);
@@ -11,13 +18,6 @@ export default function Logs() {
     queryFn: () => api.logs(level || undefined, limit),
     refetchInterval: 5_000,
   });
-
-  const levelColors: Record<string, string> = {
-    ERROR: 'text-red-400',
-    WARN: 'text-yellow-400',
-    INFO: 'text-blue-400',
-    DEBUG: 'text-gray-500',
-  };
 
   return (
     <div>
@@ -45,8 +45,10 @@ export default function Logs() {
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 font-mono text-xs leading-6 max-h-[calc(100vh-200px)] overflow-auto">
           {data?.lines.map((line, i) => {
             const lvl = ['ERROR', 'WARN', 'INFO', 'DEBUG'].find(l => line.includes(`[${l}]`));
+            const info = lvl ? levelBadges[lvl] : { color: 'text-gray-400', badge: '' };
             return (
-              <div key={i} className={lvl ? levelColors[lvl] || '' : 'text-gray-400'}>
+              <div key={i} className={info.color} role="log" aria-label={lvl ? `level: ${lvl}` : undefined}>
+                {lvl && <span className={`inline-block text-[10px] px-1 rounded mr-1 align-middle ${info.badge}`}>{lvl}</span>}
                 {line}
               </div>
             );

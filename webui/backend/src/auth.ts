@@ -34,7 +34,7 @@ export function setupAuth(app: Express) {
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
     callbackURL: process.env.GITHUB_CALLBACK_URL || 'http://localhost:3000/api/ui/auth/github/callback',
-  }, (accessToken, _refreshToken, profile, done) => {
+  }, (accessToken: string, _refreshToken: string, profile: any, done: (err: Error | null, user?: any) => void) => {
     const username = profile.username || '';
     if (ALLOWED_USERS.length > 0 && !ALLOWED_USERS.includes(username)) {
       return done(new Error(`User '${username}' is not in the allowed list`));
@@ -45,8 +45,8 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  passport.serializeUser((user: any, done) => done(null, user));
-  passport.deserializeUser((user: any, done) => done(null, user));
+  passport.serializeUser((user: any, done: (err: any, id?: any) => void) => done(null, user));
+  passport.deserializeUser((user: any, done: (err: any, user?: any) => void) => done(null, user));
 
   // Login endpoint
   app.get('/api/ui/auth/github', passport.authenticate('github', { scope: ['user:email'] }));

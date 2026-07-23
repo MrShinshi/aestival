@@ -644,4 +644,31 @@ std::string self_iteration_engine::shell_quote(std::string_view s) {
 	return r;
 }
 
+// ─── shared factory ──────────────────────────────────────────────────────
+
+std::function<std::string(bool)> make_si_callback(std::shared_ptr<self_iteration_engine> si) {
+	if (!si)
+		return {};
+	return [si](bool dry) -> std::string {
+		auto r = dry ? si->dry_run() : si->run();
+		if (!r.error.empty())
+			return "## 自迭代失败\n\n" + r.error;
+
+		std::ostringstream md;
+		md << "## " << (r.dry_run ? "自迭代评估 (dry-run)" : "自迭代完成") << "\n\n";
+		md << "| 指标 | 分数 |\n|------|------|\n";
+		md << "| 语气 | " << r.avg_tone_score << " |\n";
+		md << "| 准确性 | " << r.avg_accuracy_score << " |\n";
+		md << "| 完整性 | " << r.avg_completeness_score << " |\n";
+		md << "| 效率 | " << r.avg_efficiency_score << " |\n";
+		md << "\n**样本**: " << r.samples_evaluated << " | **问题**: " << r.issues_found
+		   << " | **改进**: " << r.improvements_applied;
+		if (!r.git_commit_hash.empty())
+			md << "\n\ncommit: `" << r.git_commit_hash << "`";
+		if (!r.summary.empty())
+			md << "\n\n" << r.summary;
+		return md.str();
+	};
+}
+
 } // namespace client

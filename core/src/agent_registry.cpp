@@ -81,37 +81,6 @@ struct qq_adapter final : client::bot_messaging {
 // ─── forward declarations (defined in app/llm_adapter.cpp) ─────────────────
 std::unique_ptr<client::model_client> make_model_client(client::agent_config const& cfg, bool verify_tls);
 
-namespace {
-
-// ─── self-iteration callback ──────────────────────────────────────────────
-
-static std::function<std::string(bool)> make_si_callback(std::shared_ptr<client::self_iteration_engine> si) {
-	if (!si)
-		return {};
-	return [si](bool dry) -> std::string {
-		auto r = dry ? si->dry_run() : si->run();
-		if (!r.error.empty())
-			return "## 自迭代失败\n\n" + r.error;
-
-		std::ostringstream md;
-		md << "## " << (r.dry_run ? "自迭代评估 (dry-run)" : "自迭代完成") << "\n\n";
-		md << "| 指标 | 分数 |\n|------|------|\n";
-		md << "| 语气 | " << r.avg_tone_score << " |\n";
-		md << "| 准确性 | " << r.avg_accuracy_score << " |\n";
-		md << "| 完整性 | " << r.avg_completeness_score << " |\n";
-		md << "| 效率 | " << r.avg_efficiency_score << " |\n";
-		md << "\n**样本**: " << r.samples_evaluated << " | **问题**: " << r.issues_found
-		   << " | **改进**: " << r.improvements_applied;
-		if (!r.git_commit_hash.empty())
-			md << "\n\ncommit: `" << r.git_commit_hash << "`";
-		if (!r.summary.empty())
-			md << "\n\n" << r.summary;
-		return md.str();
-	};
-}
-
-} // namespace
-
 // ─── agent_registry ────────────────────────────────────────────────────────
 
 client::agent_registry::agent_registry(shared_deps deps) : deps_(std::move(deps)) {}
@@ -119,6 +88,8 @@ client::agent_registry::agent_registry(shared_deps deps) : deps_(std::move(deps)
 client::agent_registry::~agent_registry() {
 	try {
 		stop_all();
+	} catch (std::exception const& ex) {
+		log::error("[registry] stop_all in destructor failed: " + std::string(ex.what()));
 	} catch (...) {
 	}
 }
@@ -162,7 +133,7 @@ void client::agent_registry::stop_all() {
 				if (inst->alive_flag)
 					inst->alive_flag->store(false);
 				if (inst->controller)
-					inst->controller.reset(); // destructor stops worker pool
+					inst->controller.reset(); // shared_ptr reset — safe for async users
 				if (inst->im)
 					inst->im->stop();
 			} catch (std::exception const& ex) {
@@ -256,7 +227,10 @@ void client::agent_registry::start_agent(std::string_view id) {
 	inst.metrics.last_error.clear();
 
 	try {
-		// Re-create session and controller
+		// Reset old resources before rebuilding
+		inst.controller.reset();
+		inst.im.reset();
+		inst.session.reset();
 		build_agent(inst);
 		launch_agent(inst);
 		log::info("[registry] agent '" + key + "' started");
@@ -282,8 +256,8 @@ void client::agent_registry::stop_agent(std::string_view id) {
 		return;
 
 	inst.status = agent_status::stopping;
-		if (inst.alive_flag)
-			inst.alive_flag->store(false);
+	if (inst.alive_flag)
+		inst.alive_flag->store(false);
 	inst.controller.reset();
 	inst.im->stop();
 	inst.status = agent_status::stopped;
@@ -373,6 +347,7 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 
 	// ── LLM client ─────────────────────────────────────────────────────
 	auto llm = make_model_client(cfg, true);
+	auto llm_shared = std::shared_ptr<client::model_client>(std::move(llm));
 
 	// ── Self-iteration engine ──────────────────────────────────────────
 	auto si_db = std::make_shared<client::sqlite_backend>(cfg.storage_dir + "/conversations.db");
@@ -383,13 +358,14 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 	si_cfg.claude_path = cfg.claude_code_path;
 	auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db, cfg.workspace);
 
-	// ── Controller ─────────────────────────────────────────────────────
-	auto ctrl = std::make_unique<agent_controller>(*adapter, deps_.plugins, std::move(llm), cfg, deps_.reach);
-	ctrl->on_self_iterate = make_si_callback(si);
+	// ── Controller (shared_ptr for safe async use) ─────────────────────
+	auto ctrl = std::make_shared<agent_controller>(*adapter, deps_.plugins, llm_shared, cfg, deps_.reach);
+	ctrl->on_self_iterate = client::make_si_callback(si);
 
 	// ── Wire QQ events → controller ────────────────────────────────────
-	adapter->wire_events([ctrl_raw = ctrl.get()](client::message_event const& m) {
-		ctrl_raw->handle_message(m);
+	adapter->wire_events([ctrl_weak = std::weak_ptr<agent_controller>(ctrl)](client::message_event const& m) {
+		if (auto c = ctrl_weak.lock())
+			c->handle_message(m);
 	});
 
 	// ── Connect handler ────────────────────────────────────────────────
@@ -410,9 +386,8 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 	// ── Store into instance ────────────────────────────────────────────
 	inst.session = std::move(sess);
 	inst.im = std::move(adapter);
-	// inst.llm left empty; owned by controller
+	inst.llm = std::move(llm_shared);
 	inst.controller = std::move(ctrl);
-	// llm unique_ptr transient — make_model_client result was moved into controller
 }
 
 // ── launch_agent (internal) ────────────────────────────────────────────────
@@ -424,16 +399,15 @@ void client::agent_registry::launch_agent(agent_instance& inst) {
 	inst.session->start();
 
 	// Notify after a short delay to allow connection.
-	// Use a weak_ptr to the instance's lifecycle flag — if the agent is
-	// stopped/destroyed before the delay elapses, the flag is signaled and
-	// we skip notify_startup() to avoid use-after-free.
+	// Capture a shared_ptr<agent_controller> to keep the controller alive
+	// for the duration of the notification — eliminates the TOCTOU
+	// use-after-free window between alive_flag check and notify_startup().
 	inst.alive_flag = std::make_shared<std::atomic<bool>>(true);
-	std::weak_ptr<std::atomic<bool>> weak_flag = inst.alive_flag;
-	auto* ctrl = inst.controller.get();
-	std::thread([ctrl, weak_flag]() {
+	auto ctrl = inst.controller; // shared_ptr copy
+	auto alive = inst.alive_flag; // shared_ptr copy
+	std::thread([ctrl, alive]() {
 		std::this_thread::sleep_for(std::chrono::seconds(3));
-		auto flag = weak_flag.lock();
-		if (flag && flag->load() && ctrl) {
+		if (alive->load()) {
 			try {
 				ctrl->notify_startup();
 			} catch (...) {

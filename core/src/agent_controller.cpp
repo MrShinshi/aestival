@@ -70,7 +70,7 @@ static std::string format_display_content(client::message_event const& msg) {
 // ─── agent_controller ────────────────────────────────────────────────────
 
 client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& plugins,
-										   std::unique_ptr<model_client> llm, agent_config const& config,
+										   std::shared_ptr<model_client> llm, agent_config const& config,
 										   std::shared_ptr<agent_reach_client> reach)
 	: bot_(bot), plugins_(plugins), llm_(std::move(llm)), reach_(std::move(reach)),
 	  policy_(policy_engine::config{config.max_messages_per_minute, k_policy_max_turns_per_convo,
@@ -249,7 +249,7 @@ void client::agent_controller::process_agent_message(message_event const& messag
 			auto rules = group_rules_template_;
 			auto pos = rules.find("{AT_HINT}");
 			if (pos != std::string::npos)
-				rules.replace(pos, 10, hint);
+				rules.replace(pos, kAtHintLen, hint);
 			messages.insert(messages.begin() + global_system_.size(), {"system", "", std::move(rules)});
 		}
 
@@ -264,7 +264,7 @@ void client::agent_controller::process_agent_message(message_event const& messag
 		// P2-1: pre-LLM rate limit + budget check
 		std::string limit_reason;
 		if (!policy_.check_llm_call(cid, &limit_reason)) {
-			reply_to(message, "â  " + limit_reason);
+			reply_to(message, "⚠ " + limit_reason);
 			return;
 		}
 		auto msg_count_before = messages.size();
@@ -331,43 +331,47 @@ void client::agent_controller::process_agent_message(message_event const& messag
 
 // ─── shell tool schema ───────────────────────────────────────────────────
 
-nlohmann::json client::agent_controller::build_tools() const {
-	auto fn = nlohmann::json::object();
-	fn["name"] = "shell";
-	fn["description"] = "Execute a shell command and return stdout. "
-						"Available: curl, bili, gh, twitter, mcporter. "
-						"B站个人数据: bili following/favorites/history/whoami. "
-						"See TOOLS.md for exact command formats.\n"
-						"CRITICAL ANTI-HALLUCINATION RULES:\n"
-						"- NEVER fabricate or guess data. EVERY fact MUST come from actual tool output.\n"
-						"- When user says '继续/还有/下一页/剩下的/需要': you MUST re-run the SAME tool command. "
-						"DO NOT guess or complete the list from memory.\n"
-						"- BAD example: bili following returned 31 items, you showed 20, user says '继续' "
-						"-> you make up 11 names. THIS IS WRONG! "
-						"CORRECT: call bili following again.\n"
-						"- If you cannot get more data, honestly tell the user '工具只返回了这些'.";
-	fn["parameters"] = {
-		{"type", "object"},
-		{"properties",
-		 {{"command",
-		   {{"type", "string"},
-			{"description", "The shell command. Examples: "
-							"'bili hot -n 5', "
-							"'curl -s --max-time 15 \"https://wttr.in/Beijing?lang=zh&format=3\"', "
-							"'gh search repos \"q\" --sort stars --limit 3 --json name,stargazersCount,url'"}}}}},
-		{"required", nlohmann::json::array({"command"})}};
+nlohmann::json client::agent_controller::build_tools() {
+	std::call_once(tools_cache_flag_, [this] {
+		auto fn = nlohmann::json::object();
+		fn["name"] = "shell";
+		fn["description"] = "Execute a shell command and return stdout. "
+							"Available: curl, bili, gh, twitter, mcporter. "
+							"B站个人数据: bili following/favorites/history/whoami. "
+							"See TOOLS.md for exact command formats.\n"
+							"CRITICAL ANTI-HALLUCINATION RULES:\n"
+							"- NEVER fabricate or guess data. EVERY fact MUST come from actual tool output.\n"
+							"- When user says '继续/还有/下一页/剩下的/需要': you MUST re-run the SAME tool command. "
+							"DO NOT guess or complete the list from memory.\n"
+							"- BAD example: bili following returned 31 items, you showed 20, user says '继续' "
+							"-> you make up 11 names. THIS IS WRONG! "
+							"CORRECT: call bili following again.\n"
+							"- If you cannot get more data, honestly tell the user '工具只返回了这些'.";
+		fn["parameters"] = {
+			{"type", "object"},
+			{"properties",
+			 {{"command",
+			   {{"type", "string"},
+				{"description", "The shell command. Examples: "
+								"'bili hot -n 5', "
+								"'curl -s --max-time 15 \"https://wttr.in/Beijing?lang=zh&format=3\"', "
+								"'gh search repos \"q\" --sort stars --limit 3 --json name,stargazersCount,url'"}}}}},
+			{"required", nlohmann::json::array({"command"})}};
 
-	auto tool = nlohmann::json::object();
-	tool["type"] = "function";
-	tool["function"] = std::move(fn);
-	auto result = nlohmann::json::array({std::move(tool)});
+		auto tool = nlohmann::json::object();
+		tool["type"] = "function";
+		tool["function"] = std::move(fn);
+		auto result = nlohmann::json::array({std::move(tool)});
 
-	// P2-2: append plugin-provided tools
-	auto plugin_tools = tools_.build_tools_json();
-	for (auto const& pt : plugin_tools)
-		result.push_back(pt);
+		// P2-2: append plugin-provided tools
+		auto plugin_tools = tools_.build_tools_json();
+		for (auto const& pt : plugin_tools)
+			result.push_back(pt);
 
-	return result;
+		cached_tools_json_ = result;
+	});
+
+	return cached_tools_json_;
 }
 
 bool client::agent_controller::is_safe_command(std::string_view cmd) const {
@@ -456,6 +460,8 @@ static bool is_safe_curl_target(std::string_view cmd) {
 // ─── record_token_usage ──────────────────────────────────────────────────
 
 void client::agent_controller::record_token_usage(nlohmann::json const& usage) {
+	if (!llm_)
+		return;
 	if (usage.is_discarded() || !usage.is_object())
 		return;
 	int p = usage.value("prompt_tokens", 0);
@@ -732,7 +738,7 @@ void client::agent_controller::tool_loop(std::vector<chat_message>& messages, st
 						sr = reach_->search_exa(q, 5);
 					}
 					// Wikipedia API -- zero-config fallback, always works
-					if (sr.empty()) {
+					if (sr.empty() && reach_) {
 						sr = reach_->search_wikipedia(q, 5);
 					}
 					if (sr.empty())
@@ -762,36 +768,43 @@ void client::agent_controller::tool_loop(std::vector<chat_message>& messages, st
 		// Execute tool calls in parallel.
 		// Each call is dispatched through route_shell_command() which
 		// routes to dedicated parsers (bili_hot, search_github, etc.)
-		// for formatted, clipped results -- falling back to raw exec()
+		// for formatted, clipped results — falling back to raw exec()
 		// for commands without a dedicated parser.
+		// Use weak_ptr to avoid dangling 'this' if controller is destroyed
+		// during async execution.
 
+		std::weak_ptr<agent_controller> weak_self = shared_from_this();
 		std::vector<std::future<std::pair<std::string, std::string>>> futures;
 		futures.reserve(resp.tool_calls.size());
 
 		for (auto const& tc : resp.tool_calls) {
-			futures.push_back(std::async(std::launch::async, [this, &tc]() -> std::pair<std::string, std::string> {
+			futures.push_back(std::async(std::launch::async, [weak_self, tc]() -> std::pair<std::string, std::string> {
+				auto self = weak_self.lock();
+				if (!self)
+					return {tc.id, "(controller destroyed)"};
+
 				auto t_exec = std::chrono::steady_clock::now();
 				auto args = nlohmann::json::parse(tc.arguments, nullptr, false);
 				std::string result;
 
 				if (tc.function_name == "shell") {
 					auto cmd = args.value("command", "");
-					if (!is_safe_command(cmd)) {
+					if (!self->is_safe_command(cmd)) {
 						result = "Error: command not allowed.";
 					} else {
-						log::info("[agent] shell: " + cmd.substr(0, 80));
-						result = route_shell_command(cmd);
+						client::log::info("[agent] shell: " + cmd.substr(0, 80));
+						result = self->route_shell_command(cmd);
 						auto exec_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 										   std::chrono::steady_clock::now() - t_exec)
 										   .count();
-						log::info("[agent] shell: " + std::to_string(result.size()) + " chars " +
-								  std::to_string(exec_ms) + "ms");
+						client::log::info("[agent] shell: " + std::to_string(result.size()) + " chars " +
+										  std::to_string(exec_ms) + "ms");
 						if (result.empty())
 							result = "(no output)";
 					}
 				} else {
 					// P2-2: try plugin tool providers
-					result = tools_.execute(tc.function_name, args);
+					result = self->tools_.execute(tc.function_name, args);
 				}
 
 				return {tc.id, std::move(result)};
@@ -822,11 +835,11 @@ std::vector<client::chat_message> client::agent_controller::build_message_list(s
 			auto now = std::chrono::system_clock::now();
 			auto tt = std::chrono::system_clock::to_time_t(now);
 			std::tm local_tm{};
-#ifdef _WIN32
+	#ifdef _WIN32
 			localtime_s(&local_tm, &tt);
-#else
+	#else
 			localtime_r(&tt, &local_tm);
-#endif
+	#endif
 			char buf[64];
 			std::strftime(buf, sizeof(buf), "%Y年%m月%d日 (%A) %H:%M:%S", &local_tm);
 			messages.insert(messages.begin(),

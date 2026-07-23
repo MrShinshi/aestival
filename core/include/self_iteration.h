@@ -166,4 +166,9 @@ class self_iteration_engine {
 	std::chrono::system_clock::time_point last_iteration_{};
 };
 
+// ─── shared factory (used by agent_registry and main) ───────────────────
+// Builds a self-iteration callback suitable for assigning to
+// agent_controller::on_self_iterate.  Returns an empty function if si is null.
+std::function<std::string(bool)> make_si_callback(std::shared_ptr<self_iteration_engine> si);
+
 } // namespace client

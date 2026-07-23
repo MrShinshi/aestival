@@ -69,8 +69,8 @@ struct agent_instance {
 	agent_config config;
 	std::unique_ptr<platform::qq::session> session; // concrete QQ (TODO: abstract interface for wechat)
 	std::unique_ptr<bot_messaging> im;		// adapter (qq_adapter / console_api)
-	std::unique_ptr<model_client> llm;		// deepseek or openai
-	std::unique_ptr<agent_controller> controller;
+	std::shared_ptr<model_client> llm;		// deepseek or openai (shared with controller)
+	std::shared_ptr<agent_controller> controller; // shared_ptr for safe async use
 
 	agent_status status = agent_status::stopped;
 	agent_metrics metrics;

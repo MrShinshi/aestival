@@ -17,13 +17,13 @@
 #include "tool_registry.h"
 #include "worker_pool.h"
 
-#include <nlohmann/json_fwd.hpp>
+#include <nlohmann/json.hpp>
 
 namespace client {
 
-struct agent_controller {
+struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	public:
-	agent_controller(bot_messaging& bot, plugin_manager& plugins, std::unique_ptr<model_client> llm,
+	agent_controller(bot_messaging& bot, plugin_manager& plugins, std::shared_ptr<model_client> llm,
 					 agent_config const& config, std::shared_ptr<agent_reach_client> reach);
 	~agent_controller();
 
@@ -41,7 +41,7 @@ struct agent_controller {
 	void tool_loop(std::vector<chat_message>& messages, std::string const& convo_id);
 
 	// Build the full tools JSON array (shell + plugin-provided tools).
-	nlohmann::json build_tools() const;
+	nlohmann::json build_tools();
 
 	// Safety: check that a shell command is in the allowed set.
 	bool is_safe_command(std::string_view cmd) const;
@@ -64,7 +64,7 @@ struct agent_controller {
 	// ── owned modules ──────────────────────────────────────────────────
 	bot_messaging& bot_;
 	plugin_manager& plugins_;
-	std::unique_ptr<model_client> llm_;
+	std::shared_ptr<model_client> llm_;
 	std::shared_ptr<agent_reach_client> reach_;
 	policy_engine policy_;
 	tool_registry tools_;
@@ -78,6 +78,12 @@ struct agent_controller {
 	mutable std::mutex state_mutex_;
 	runtime_mode mode_ = runtime_mode::plugin;
 	std::atomic<bool> stopping_{false};
+
+	// Cached tool schemas — built once, reused across tool_loop calls.
+	nlohmann::json cached_tools_json_;
+	std::once_flag tools_cache_flag_;
+
+	static constexpr size_t kAtHintLen = 9; // length of "{AT_HINT}"
 };
 
 } // namespace client

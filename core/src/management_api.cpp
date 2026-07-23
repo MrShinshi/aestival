@@ -73,6 +73,30 @@ namespace {
 			s.resize(max_len);
 		return s;
 	}
+
+	// Allowed platform and LLM provider values.
+	bool is_valid_platform(std::string_view p) {
+		return p == "qq" || p == "console";
+	}
+	bool is_valid_llm_provider(std::string_view p) {
+		return p == "deepseek" || p == "openai";
+	}
+
+	// Allowed conversation ID characters.
+	bool is_valid_conversation_id(std::string_view id) {
+		if (id.empty() || id.size() > k_max_path)
+			return false;
+		for (char c : id) {
+			if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				  (c >= '0' && c <= '9') || c == '_' || c == '-' || c == ':'))
+				return false;
+		}
+		if (id.find("..") != std::string_view::npos)
+			return false;
+		if (id.find('\0') != std::string_view::npos)
+			return false;
+		return true;
+	}
 } // namespace
 
 static std::string json_response(http::status status, nlohmann::json const& body) {
@@ -102,6 +126,7 @@ struct management_api::impl {
 	boost::asio::io_context ioc;
 	tcp::acceptor acceptor;
 	std::thread worker;
+	std::mutex lifecycle_mutex_; // protects start/stop transitions
 
 	impl(agent_registry& r, global_config const& g)
 		: registry(r), config(g), jwt(g.jwt_secret), acceptor(ioc) {}
@@ -143,6 +168,7 @@ struct management_api::impl {
 			}
 
 			// ── Agent routes ──────────────────────────────────────────────
+			// Strict routing: match exact paths to avoid overly broad matches.
 			if (target == "/api/v1/agents" && method == http::verb::get)
 				return handle_agents_list();
 			if (target == "/api/v1/agents" && method == http::verb::post)
@@ -156,8 +182,12 @@ struct management_api::impl {
 			if (target.starts_with("/api/v1/agents/") && target.ends_with("/config") &&
 				method == http::verb::put)
 				return handle_agent_config(extract_id(target, "/config"), req.body());
-			if (target.starts_with("/api/v1/agents/") && method == http::verb::delete_)
-				return handle_agent_remove(extract_id_raw(target));
+			if (target.starts_with("/api/v1/agents/") && method == http::verb::delete_) {
+				// Must be exactly /api/v1/agents/{id} — no extra segments.
+				auto id = extract_id_raw(target);
+				if (!id.empty() && is_valid_agent_id(id))
+					return handle_agent_remove(id);
+			}
 
 			// ── Log routes ───────────────────────────────────────────────
 			if (target.starts_with("/api/v1/logs") && method == http::verb::get)
@@ -166,8 +196,11 @@ struct management_api::impl {
 			// ── Conversation routes ──────────────────────────────────────
 			if (target == "/api/v1/conversations" && method == http::verb::get)
 				return handle_conversations_list();
-			if (target.starts_with("/api/v1/conversations/") && method == http::verb::get)
-				return handle_conversation_detail(extract_id_raw(target));
+			if (target.starts_with("/api/v1/conversations/") && method == http::verb::get) {
+				auto id = extract_conversation_id(target);
+				if (!id.empty())
+					return handle_conversation_detail(id);
+			}
 
 			return make_response(http::status::not_found,
 								 error_response(http::status::not_found, "not found"));
@@ -221,6 +254,8 @@ struct management_api::impl {
 			throw std::runtime_error("invalid agent id: must be 1-64 alphanumeric, hyphens, or underscores");
 		cfg.name = truncate_str(j.value("name", ""), k_max_agent_name);
 		cfg.platform = j.value("platform", "qq");
+		if (!is_valid_platform(cfg.platform))
+			throw std::runtime_error("invalid platform: must be 'qq' or 'console'");
 		cfg.enabled = j.value("enabled", true);
 
 		if (auto qq = j.find("qq"); qq != j.end()) {
@@ -228,6 +263,8 @@ struct management_api::impl {
 			cfg.qq_app_secret = truncate_str(qq->value("app_secret", ""), k_max_api_key);
 		}
 		cfg.llm_provider = j.value("llm_provider", "deepseek");
+		if (!is_valid_llm_provider(cfg.llm_provider))
+			throw std::runtime_error("invalid llm_provider: must be 'deepseek' or 'openai'");
 		if (auto ds = j.find("deepseek"); ds != j.end()) {
 			cfg.deepseek_api_key = truncate_str(ds->value("api_key", ""), k_max_api_key);
 			cfg.deepseek_model = truncate_str(ds->value("model", "deepseek-chat"), k_max_app_id);
@@ -269,8 +306,12 @@ struct management_api::impl {
 			cfg.name = truncate_str(j["name"].get<std::string>(), k_max_agent_name);
 		if (j.contains("enabled"))
 			cfg.enabled = j["enabled"].get<bool>();
-		if (j.contains("llm_provider"))
-			cfg.llm_provider = truncate_str(j["llm_provider"].get<std::string>(), k_max_app_id);
+		if (j.contains("llm_provider")) {
+			auto prov = truncate_str(j["llm_provider"].get<std::string>(), k_max_app_id);
+			if (!is_valid_llm_provider(prov))
+				throw std::runtime_error("invalid llm_provider: must be 'deepseek' or 'openai'");
+			cfg.llm_provider = prov;
+		}
 		if (j.contains("workspace")) {
 			auto ws = j["workspace"].get<std::string>();
 			if (!is_safe_path_component(ws))
@@ -375,8 +416,8 @@ struct management_api::impl {
 
 	http::response<http::string_body> handle_conversation_detail(std::string const& /*convo_id*/) {
 		// Stub: full conversation detail needs cross-agent SQLite query.
-		return make_response(http::status::not_found,
-							 error_response(http::status::not_found, "conversation detail not yet implemented"));
+		return make_response(http::status::not_implemented,
+							 error_response(http::status::not_implemented, "conversation detail not yet implemented"));
 	}
 
 	// ── helpers ──────────────────────────────────────────────────────────
@@ -392,22 +433,30 @@ struct management_api::impl {
 
 	static std::string extract_id_raw(std::string const& target) {
 		static constexpr std::string_view k_prefix = "/api/v1/agents/";
-		static constexpr std::string_view k_conv_prefix = "/api/v1/conversations/";
 		if (target.starts_with(k_prefix)) {
 			auto id = std::string(target.substr(k_prefix.size()));
 			if (!is_valid_agent_id(id))
 				throw std::runtime_error("invalid agent id in URL: " + id);
 			return id;
 		}
-		if (target.starts_with(k_conv_prefix))
-			return std::string(target.substr(k_conv_prefix.size()));
+		return {};
+	}
+
+	static std::string extract_conversation_id(std::string const& target) {
+		static constexpr std::string_view k_prefix = "/api/v1/conversations/";
+		if (target.starts_with(k_prefix)) {
+			auto id = std::string(target.substr(k_prefix.size()));
+			if (!is_valid_conversation_id(id))
+				throw std::runtime_error("invalid conversation id in URL: " + id);
+			return id;
+		}
 		return {};
 	}
 
 	static http::response<http::string_body> make_response(http::status status, std::string body) {
 		http::response<http::string_body> res{status, 11};
 		res.set(http::field::content_type, "application/json");
-		res.set(http::field::access_control_allow_origin, "*");
+		res.set(http::field::access_control_allow_origin, "http://localhost:3000");
 		res.body() = std::move(body);
 		res.prepare_payload();
 		return res;
@@ -422,14 +471,46 @@ management_api::management_api(agent_registry& registry, global_config const& gl
 management_api::~management_api() { stop(); }
 
 void management_api::start() {
+	std::lock_guard<std::mutex> lk(impl_->lifecycle_mutex_);
+
 	if (impl_->worker.joinable())
 		return; // already started
 
-	// Parse listen address
-	auto colon = impl_->config.management_listen.find(':');
-	std::string host = impl_->config.management_listen.substr(0, colon);
-	std::string port_str = colon != std::string::npos ? impl_->config.management_listen.substr(colon + 1) : "9090";
-	auto port = static_cast<unsigned short>(std::stoi(port_str));
+	// Parse listen address (supports "host:port" and "[ipv6]:port").
+	std::string host = "127.0.0.1";
+	std::string port_str = "9090";
+	auto const& listen_addr = impl_->config.management_listen;
+
+	if (!listen_addr.empty()) {
+		if (listen_addr[0] == '[') {
+			// IPv6 bracketed format: [::1]:9090
+			auto bracket = listen_addr.find(']');
+			if (bracket != std::string::npos) {
+				host = listen_addr.substr(1, bracket - 1);
+				if (bracket + 1 < listen_addr.size() && listen_addr[bracket + 1] == ':')
+					port_str = listen_addr.substr(bracket + 2);
+			}
+		} else {
+			auto colon = listen_addr.rfind(':');
+			if (colon != std::string::npos) {
+				host = listen_addr.substr(0, colon);
+				port_str = listen_addr.substr(colon + 1);
+			} else {
+				host = listen_addr;
+			}
+		}
+	}
+
+	unsigned short port = 9090;
+	try {
+		int p = std::stoi(port_str);
+		if (p < 1 || p > 65535)
+			throw std::runtime_error("port out of range");
+		port = static_cast<unsigned short>(p);
+	} catch (std::exception const& ex) {
+		log::error(std::string("[mgmt-api] invalid port '") + port_str + "': " + ex.what());
+		throw;
+	}
 
 	impl_->started_at = std::chrono::steady_clock::now();
 
@@ -439,9 +520,9 @@ void management_api::start() {
 			auto const results = resolver.resolve(host, std::to_string(port));
 
 			auto const endpoint = results.begin()->endpoint();
-				impl_->acceptor.open(endpoint.protocol());
-				impl_->acceptor.set_option(boost::asio::socket_base::reuse_address(true));
-				impl_->acceptor.bind(endpoint);
+			impl_->acceptor.open(endpoint.protocol());
+			impl_->acceptor.set_option(boost::asio::socket_base::reuse_address(true));
+			impl_->acceptor.bind(endpoint);
 			impl_->acceptor.listen(boost::asio::socket_base::max_listen_connections);
 
 			log::info("[mgmt-api] listening on " + host + ":" + std::to_string(port));
@@ -465,6 +546,13 @@ void management_api::start() {
 				auto req = parser.release();
 				if (ec) {
 					log::warn("[mgmt-api] read error: " + ec.message());
+					// Try to send error response before continuing
+					boost::system::error_code wec;
+					http::response<http::string_body> err_res{http::status::bad_request, 11};
+					err_res.set(http::field::content_type, "application/json");
+					err_res.body() = R"({"status":"error","error":"bad request"})";
+					err_res.prepare_payload();
+					http::write(socket, err_res, wec);
 					continue;
 				}
 
@@ -482,6 +570,8 @@ void management_api::start() {
 }
 
 void management_api::stop() {
+	std::lock_guard<std::mutex> lk(impl_->lifecycle_mutex_);
+
 	if (!impl_->worker.joinable())
 		return;
 

@@ -74,9 +74,9 @@ int run_console_mode(client::agent_config const& config, client::plugin_manager&
 					 std::shared_ptr<client::agent_reach_client> reach_client,
 					 std::function<std::string(bool)> on_self_iterate, bool verify_tls) {
 	client::console_api con;
-	auto llm = make_model_client(config, verify_tls);
-	client::agent_controller controller(con, plugins, std::move(llm), config, reach_client);
-	controller.on_self_iterate = on_self_iterate;
+	auto llm = std::shared_ptr<client::model_client>(make_model_client(config, verify_tls));
+	auto ctrl = std::make_shared<client::agent_controller>(con, plugins, llm, config, reach_client);
+	ctrl->on_self_iterate = on_self_iterate;
 
 	std::cerr << "=== aestival console mode ===\n"
 			  << "Type messages; 'exit' or Ctrl+C to quit.\n\n"
@@ -97,38 +97,10 @@ int run_console_mode(client::agent_config const& config, client::plugin_manager&
 		msg.sender_id = "console";
 		msg.sender_nick = "console";
 
-		controller.handle_message(msg);
+		ctrl->handle_message(msg);
 		std::cout << "\n";
 	}
 	return 0;
-}
-
-// ── self-iteration callback factory ────────────────────────────────────────
-
-static std::function<std::string(bool)>
-make_si_callback(std::shared_ptr<client::self_iteration_engine> si) {
-	if (!si)
-		return {};
-	return [si](bool dry) -> std::string {
-		auto r = dry ? si->dry_run() : si->run();
-		if (!r.error.empty())
-			return "## 自迭代失败\n\n" + r.error;
-
-		std::ostringstream md;
-		md << "## " << (r.dry_run ? "自迭代评估 (dry-run)" : "自迭代完成") << "\n\n";
-		md << "| 指标 | 分数 |\n|------|------|\n";
-		md << "| 语气 | " << r.avg_tone_score << " |\n";
-		md << "| 准确性 | " << r.avg_accuracy_score << " |\n";
-		md << "| 完整性 | " << r.avg_completeness_score << " |\n";
-		md << "| 效率 | " << r.avg_efficiency_score << " |\n";
-		md << "\n**样本**: " << r.samples_evaluated << " | **问题**: " << r.issues_found
-		   << " | **改进**: " << r.improvements_applied;
-		if (!r.git_commit_hash.empty())
-			md << "\n\ncommit: `" << r.git_commit_hash << "`";
-		if (!r.summary.empty())
-			md << "\n\n" << r.summary;
-		return md.str();
-	};
 }
 
 } // namespace
@@ -187,7 +159,7 @@ int main(int argc, char* argv[]) {
 		auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db,
 																   resolve_workspace(base, ac.workspace));
 
-		return run_console_mode(ac, plugins, reach, make_si_callback(si), cfg.global.verify_tls);
+		return run_console_mode(ac, plugins, reach, client::make_si_callback(si), cfg.global.verify_tls);
 	}
 
 	// ── QQ / multi-agent mode ────────────────────────────────────────────

@@ -67,8 +67,12 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 
 		if (d.llm && d.llm->provider_name() == "deepseek") {
 			std::time_t now_tt = std::time(nullptr);
-			std::tm utc_tm;
-			std::memcpy(&utc_tm, std::gmtime(&now_tt), sizeof(std::tm));
+			std::tm utc_tm{};
+#ifdef _WIN32
+			gmtime_s(&utc_tm, &now_tt);
+#else
+			gmtime_r(&now_tt, &utc_tm);
+#endif
 			int year  = utc_tm.tm_year + 1900;
 			int month = utc_tm.tm_mon  + 1;
 
@@ -218,6 +222,17 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 		if (!is_admin(msg, d.admin_ids)) {
 			d.reply_to(msg, "Permission denied.");
 			return true;
+		}
+		// Safety: refuse to delete if any agent is running — the database
+		// file is in active use by SQLite and removal would cause corruption.
+		if (d.registry) {
+			auto agents = d.registry->list_agents();
+			for (auto const& [id, status] : agents) {
+				if (status == agent_status::running || status == agent_status::starting) {
+					d.reply_to(msg, "存在活跃 Agent ('" + id + "')，请先停止所有 Agent 后再删除数据库。");
+					return true;
+				}
+			}
 		}
 		std::string db_path = d.storage_dir + "/conversations.db";
 		if (std::filesystem::exists(db_path)) {

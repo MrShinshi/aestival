@@ -88,7 +88,7 @@ void pool_release(std::string const& host, std::shared_ptr<pooled_stream> s) {
 	pool_[host] = std::move(s);
 }
 
-void pool_remove(std::string const& host) {
+[[maybe_unused]] void pool_remove(std::string const& host) {
 	std::lock_guard<std::mutex> lk(pool_mutex_);
 	pool_.erase(host);
 }

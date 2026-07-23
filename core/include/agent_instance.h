@@ -86,8 +86,11 @@ struct agent_instance {
 	agent_instance() = default;
 	agent_instance(agent_instance const&) = delete;
 	agent_instance& operator=(agent_instance const&) = delete;
-	agent_instance(agent_instance&&) noexcept = default;
-	agent_instance& operator=(agent_instance&&) noexcept = default;
+	// Move ops are deleted because agent_metrics contains std::atomic
+	// which is non-movable.  agent_instance is always held via unique_ptr,
+	// so the move of the instance itself is never needed.
+	agent_instance(agent_instance&&) = delete;
+	agent_instance& operator=(agent_instance&&) = delete;
 };
 
 } // namespace client

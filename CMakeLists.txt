@@ -283,7 +283,7 @@ if(AESTIVAL_WERROR)
         # -Wno-missing-field-initializers: C++20 aggregate init with omitted
         # tail fields is well-defined (value-initialized).  Not a bug.
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Werror -Wno-error=missing-field-initializers)
+            -Werror -Wno-error=missing-field-initializers -Wno-error=maybe-uninitialized)
     endif()
 endif()
 

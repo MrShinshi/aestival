@@ -24,16 +24,6 @@ namespace http = beast::http;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-static std::string method_str(http::verb v) {
-	switch (v) {
-	case http::verb::get: return "GET";
-	case http::verb::post: return "POST";
-	case http::verb::put: return "PUT";
-	case http::verb::delete_: return "DELETE";
-	default: return "UNKNOWN";
-	}
-}
-
 namespace {
 	// Maximum lengths for user-supplied string fields.
 	constexpr size_t k_max_agent_id = 64;

@@ -41,7 +41,7 @@ static std::string exe_dir(char const* argv0) {
 	return p.parent_path().string();
 }
 
-static std::string resolve_workspace(std::string const& exe, std::string const& config_workspace) {
+static std::string resolve_workspace(std::string const& /*exe*/, std::string const& config_workspace) {
 	if (auto* env = std::getenv("QCLAW_WORKSPACE"))
 		return std::string(env);
 	if (!config_workspace.empty())

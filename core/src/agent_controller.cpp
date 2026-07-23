@@ -693,7 +693,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 
 // ─── tool_loop ───────────────────────────────────────────────────────────
 
-void client::agent_controller::tool_loop(std::vector<chat_message>& messages, std::string const& convo_id) {
+void client::agent_controller::tool_loop(std::vector<chat_message>& messages, std::string const& /*convo_id*/) {
 	auto const t_start = std::chrono::steady_clock::now();
 	int tool_rounds = 0;
 

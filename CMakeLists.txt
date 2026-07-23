@@ -279,7 +279,10 @@ if(AESTIVAL_WERROR)
     if(MSVC)
         target_compile_options(${PROJECT_NAME} PRIVATE /WX)
     else()
-        target_compile_options(${PROJECT_NAME} PRIVATE -Werror)
+        # -Wno-missing-field-initializers: C++20 aggregate init with omitted
+        # tail fields is well-defined (value-initialized).  Not a bug.
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -Werror -Wno-error=missing-field-initializers)
     endif()
 endif()
 

@@ -4,6 +4,7 @@
  * Licensed under MIT
  */
 #include "stdafx.h"
+#include "log.h"
 #include "model_client.h"
 #include "platform/deepseek.h"
 #include "platform/openai.h"

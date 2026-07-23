@@ -78,3 +78,6 @@
 #include <boost/beast.hpp>
 #include <boost/locale/encoding_utf.hpp>
 #include <boost/regex.hpp>
+
+// ─── Project internal ────────────────────────────────────────────────────
+#include "log.h"

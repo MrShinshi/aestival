@@ -86,7 +86,7 @@ static std::string json_response(http::status status, nlohmann::json const& body
 	return j.dump();
 }
 
-static std::string error_response(http::status status, std::string_view msg) {
+static std::string error_response(http::status /*status*/, std::string_view msg) {
 	auto j = nlohmann::json::object({{"status", "error"}, {"error", std::string(msg)}});
 	return j.dump();
 }

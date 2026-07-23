@@ -335,7 +335,14 @@ std::string client::agent_reach_client::exec(std::string_view cmd, std::chrono::
 		std::ostringstream ws;
 		ws << "timeout " << timeout.count() << " sh -c " << std::quoted(full_cmd);
 		std::string wrapped = ws.str();
+	#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
 	std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(wrapped.c_str(), "r"), pclose);
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 	if (!pipe)
 		return {};
 	std::string result;

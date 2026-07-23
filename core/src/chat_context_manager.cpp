@@ -40,14 +40,14 @@ chat_context_manager::chat_context_manager(std::shared_ptr<chat_storage_backend>
 void chat_context_manager::append_user(std::string const& convo_id, std::string const& sender_nick,
 									   std::string const& content) {
 	std::lock_guard<std::mutex> lk(mutex_);
-	backend_->append_message(convo_id, {"user", sender_nick, content});
+	backend_->append_message(convo_id, {.role = "user", .sender_nick = sender_nick, .content = content});
 }
 
 // ─── append_assistant ─────────────────────────────────────────────────────
 
 void chat_context_manager::append_assistant(std::string const& convo_id, std::string const& content) {
 	std::lock_guard<std::mutex> lk(mutex_);
-	backend_->append_message(convo_id, {"assistant", "", content});
+	backend_->append_message(convo_id, {.role = "assistant", .content = content});
 }
 
 // ─── append_tool ─────────────────────────────────────────────────────────

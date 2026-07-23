@@ -38,7 +38,7 @@ struct tool_provider {
 	// Execute a tool call.  `tool_name` from get_tools(), `args` is the
 	// JSON from the LLM's function call.
 	// Returns the tool output as a string.
-	virtual std::string execute_tool(std::string_view tool_name, nlohmann::json const& args) {
+	virtual std::string execute_tool(std::string_view tool_name, nlohmann::json const& /*args*/) {
 		return "Error: tool '" + std::string(tool_name) + "' not implemented";
 	}
 };

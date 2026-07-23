@@ -126,7 +126,7 @@ struct plugin : tool_provider {
 	std::vector<tool_definition> get_tools() const override {
 		return {};
 	}
-	std::string execute_tool(std::string_view name, nlohmann::json const& args) override {
+	std::string execute_tool(std::string_view /*name*/, nlohmann::json const& /*args*/) override {
 		return "not implemented";
 	}
 };

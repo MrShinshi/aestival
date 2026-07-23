@@ -203,3 +203,92 @@ jobs:
         with:
           name: aestival-macos-${{ matrix.compiler }}
           path: bin/aestival
+
+  # ─── Web UI: build + deploy (push to shinshi only) ──────────────────────
+  webui:
+    name: Web UI · build & deploy
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref_name == 'shinshi'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ── Backend ──────────────────────────────────────────────────────────
+      - name: Install backend deps
+        working-directory: webui/backend
+        run: npm install
+
+      - name: Build backend
+        working-directory: webui/backend
+        run: npm run build
+
+      # ── Frontend ─────────────────────────────────────────────────────────
+      - name: Install frontend deps
+        working-directory: webui/frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: webui/frontend
+        run: npm run build
+
+      # ── Package ──────────────────────────────────────────────────────────
+      - name: Package webui artifacts
+        run: |
+          # Backend package
+          cd webui/backend
+          tar -czf "$RUNNER_TEMP/webui-backend.tar.gz" \
+            dist/ package.json node_modules/
+          cd ../..
+
+          # Frontend package
+          cd webui/frontend
+          tar -czf "$RUNNER_TEMP/webui-frontend.tar.gz" dist/
+          cd ../..
+
+      # ── Deploy ───────────────────────────────────────────────────────────
+      - name: Deploy Web UI to server
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+
+          REMOTE="shinshi@122.51.129.97"
+          REMOTE_DIR="/home/shinshi/aestival/webui"
+          FRONTEND_HTML="/home/shinshi/aestival/webui/frontend"
+
+          # Ensure target directories
+          ssh -i ~/.ssh/deploy_key "$REMOTE" "mkdir -p $REMOTE_DIR/backend $FRONTEND_HTML"
+
+          # 1. Deploy backend
+          echo ":: deploying backend..."
+          ssh -i ~/.ssh/deploy_key "$REMOTE" "
+            if [ -d '$REMOTE_DIR/backend' ]; then
+              rm -rf '$REMOTE_DIR/backend/dist' '$REMOTE_DIR/backend/node_modules.old' 2>/dev/null || true
+            fi
+          "
+          cat "$RUNNER_TEMP/webui-backend.tar.gz" |
+            ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $REMOTE_DIR/backend"
+
+          # 2. Deploy frontend (static files)
+          echo ":: deploying frontend..."
+          ssh -i ~/.ssh/deploy_key "$REMOTE" "rm -rf '$FRONTEND_HTML/'* 2>/dev/null || true"
+          cat "$RUNNER_TEMP/webui-frontend.tar.gz" |
+            ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $FRONTEND_HTML"
+
+          # 3. Restart Web UI backend service
+          echo ":: restarting webui service..."
+          ssh -i ~/.ssh/deploy_key "$REMOTE" "
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            systemctl --user restart aestival-webui.service || true
+            systemctl --user --no-pager status aestival-webui.service || true
+          "
+
+          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
+          echo ":: Web UI deployed"

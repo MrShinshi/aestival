@@ -35,7 +35,7 @@ echo "122.51.129.97 $SERVER_HOST_KEY" > "$KNOWN_HOSTS_FILE"
 SSH_CMD="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_FILE"
 RESTART_SVC=false
 SYNC_BRANCH=false
-BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo shinshi)"
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
 WORKFLOW="ci.yml"
 ARTIFACT_NAME="aestival-linux-gcc"
 
@@ -79,6 +79,12 @@ echo "   branch=$BRANCH  target=$TARGET"
 
 # ── 1. download CI artifact ──────────────────────────────────────────────────
 
+# Check gh CLI is available and authenticated.
+if ! command -v gh &>/dev/null; then
+  echo "ERROR: 'gh' CLI not found. Install it from https://cli.github.com/ and authenticate with 'gh auth login'." >&2
+  exit 1
+fi
+
 echo ":: [1/4] finding latest CI run on branch '$BRANCH'..."
 
 RUN_ID=$(gh run list \
@@ -121,7 +127,7 @@ echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 # ── 2. deploy binary & workspace (single compressed pipe) ──────────────────
 
 if $RESTART_SVC; then
-  echo ":: [2/4] stopping service..."
+  echo ":: [*] stopping service..."
   $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
   sleep 1
 fi

@@ -6,10 +6,16 @@ on:
   pull_request:
     branches: [master, main]
 
+# Prevent concurrent deploys from racing each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name == 'shinshi' }}
+
 jobs:
   build:
     name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
@@ -147,6 +153,7 @@ jobs:
             -DCMAKE_PROJECT_NAME=aestival \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
                         -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DAESTIVAL_WERROR=ON \
             -DVCPKG_BOOTSTRAPPED=ON \
             "${GENERATOR_ARGS[@]}"
 
@@ -210,6 +217,7 @@ jobs:
   webui:
     name: Web UI · build & deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build
     if: github.event_name == 'push' && github.ref_name == 'shinshi'
 
@@ -237,7 +245,7 @@ jobs:
       - name: Audit backend deps
         working-directory: webui/backend
         run: npm audit --audit-level=high
-        continue-on-error: true
+        continue-on-error: false
 
       # ── Frontend ─────────────────────────────────────────────────────────
       - name: Install frontend deps
@@ -255,7 +263,7 @@ jobs:
       - name: Audit frontend deps
         working-directory: webui/frontend
         run: npm audit --audit-level=high
-        continue-on-error: true
+        continue-on-error: false
 
       # ── Package ──────────────────────────────────────────────────────────
       - name: Package webui artifacts

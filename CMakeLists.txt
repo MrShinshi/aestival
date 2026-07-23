@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20...4.3.1)
+cmake_minimum_required(VERSION 3.20)
 
 # Prefer modern Find/Config behavior for boost (suppresses CMP0167 warning)
 if(POLICY CMP0167)
@@ -33,27 +33,28 @@ if(NOT VCPKG_BOOTSTRAPPED AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
         message(STATUS "vcpkg checkout not found — acquiring into")
         message(STATUS "  ${VCPKG_ROOT}")
 
-        # 1) try git clone (fast, small download)
+        # 1) try git clone (fast, small download) — pinned to a known-good commit
         find_package(Git QUIET)
         if(GIT_FOUND)
             execute_process(
                 COMMAND "${GIT_EXECUTABLE}" clone --depth 1
+                        --branch 2025.01.19
                         "https://github.com/microsoft/vcpkg.git"
                         "${VCPKG_ROOT}"
                 RESULT_VARIABLE git_result
             )
         endif()
 
-        # 2) fallback to zip download
+        # 2) fallback to zip download (pinned release)
         if(NOT GIT_FOUND OR NOT git_result EQUAL 0)
-            set(zip "${CMAKE_BINARY_DIR}/vcpkg-master.zip")
+            set(zip "${CMAKE_BINARY_DIR}/vcpkg-2025.01.19.zip")
             set(extract_root "${CMAKE_BINARY_DIR}/vcpkg-bootstrap")
-            set(extracted_vcpkg "${extract_root}/vcpkg-master")
+            set(extracted_vcpkg "${extract_root}/vcpkg-2025.01.19")
             file(REMOVE_RECURSE "${extract_root}")
             file(MAKE_DIRECTORY "${extract_root}")
             message(STATUS "git unavailable — downloading vcpkg zip …")
             file(DOWNLOAD
-                "https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip"
+                "https://github.com/microsoft/vcpkg/archive/refs/tags/2025.01.19.zip"
                 "${zip}"
                 SHOW_PROGRESS STATUS dl_status
             )

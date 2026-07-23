@@ -5,18 +5,15 @@
  * The bot's management_api verifies this token.
  */
 
-import { Express, Request, Response, NextFunction } from 'express';
-import { requireAuth } from './auth';
+import { Express, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 
 const BOT_API = process.env.BOT_API_URL || 'http://127.0.0.1:9090';
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
-// Generate a JWT for the bot API
-function botToken(req: Request): string {
-  const user = req.session.githubUser || 'unknown';
+function botToken(): string {
   return jwt.sign(
-    { sub: user, iat: Math.floor(Date.now() / 1000) },
+    { sub: 'admin', iat: Math.floor(Date.now() / 1000) },
     JWT_SECRET,
     { expiresIn: '1h', algorithm: 'HS256' }
   );
@@ -41,58 +38,58 @@ async function proxyToBot(method: string, path: string, body: unknown, token: st
 
 export function setupProxy(app: Express) {
   // ── Agents ──────────────────────────────────────────────────────────
-  app.get('/api/ui/agents', requireAuth, async (req, res) => {
+  app.get('/api/ui/agents', async (_req, res) => {
     try {
-      const r = await proxyToBot('GET', '/api/v1/agents', null, botToken(req));
+      const r = await proxyToBot('GET', '/api/v1/agents', null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
       res.status(502).json({ error: 'bot API unreachable', detail: err.message });
     }
   });
 
-  app.post('/api/ui/agents', requireAuth, async (req, res) => {
+  app.post('/api/ui/agents', async (req, res) => {
     try {
-      const r = await proxyToBot('POST', '/api/v1/agents', req.body, botToken(req));
+      const r = await proxyToBot('POST', '/api/v1/agents', req.body, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
       res.status(502).json({ error: 'bot API unreachable', detail: err.message });
     }
   });
 
-  app.delete('/api/ui/agents/:id', requireAuth, async (req, res) => {
+  app.delete('/api/ui/agents/:id', async (req, res) => {
     try {
-      const r = await proxyToBot('DELETE', `/api/v1/agents/${req.params.id}`, null, botToken(req));
+      const r = await proxyToBot('DELETE', `/api/v1/agents/${req.params.id}`, null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
       res.status(502).json({ error: 'bot API unreachable', detail: err.message });
     }
   });
 
-  app.post('/api/ui/agents/:id/:action', requireAuth, async (req, res) => {
+  app.post('/api/ui/agents/:id/:action', async (req, res) => {
     const { id, action } = req.params;
     if (action !== 'start' && action !== 'stop') {
       res.status(400).json({ error: 'invalid action' });
       return;
     }
     try {
-      const r = await proxyToBot('POST', `/api/v1/agents/${id}/${action}`, null, botToken(req));
+      const r = await proxyToBot('POST', `/api/v1/agents/${id}/${action}`, null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
       res.status(502).json({ error: 'bot API unreachable', detail: err.message });
     }
   });
 
-  app.put('/api/ui/agents/:id/config', requireAuth, async (req, res) => {
+  app.put('/api/ui/agents/:id/config', async (req, res) => {
     try {
-      const r = await proxyToBot('PUT', `/api/v1/agents/${req.params.id}/config`, req.body, botToken(req));
+      const r = await proxyToBot('PUT', `/api/v1/agents/${req.params.id}/config`, req.body, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
       res.status(502).json({ error: 'bot API unreachable', detail: err.message });
     }
   });
 
-  // ── Health (no auth required) ───────────────────────────────────────
-  app.get('/api/ui/status', requireAuth, async (_req, res) => {
+  // ── Status ──────────────────────────────────────────────────────────
+  app.get('/api/ui/status', async (_req, res) => {
     try {
       const r = await proxyToBot('GET', '/api/v1/health', null, '');
       res.status(r.status).json(r.data);

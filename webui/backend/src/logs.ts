@@ -4,15 +4,13 @@
  * Query params: ?level=error&limit=100&since=2026-07-01
  */
 
-import { Express, Request, Response } from 'express';
-import { requireAuth } from './auth';
+import { Express } from 'express';
 import * as fs from 'fs';
-import * as path from 'path';
 
 const LOG_PATH = process.env.BOT_LOG_PATH || '/home/shinshi/aestival/bin/bot.log';
 
 export function setupLogs(app: Express) {
-  app.get('/api/ui/logs', requireAuth, (req, res) => {
+  app.get('/api/ui/logs', (req, res) => {
     try {
       const level = (req.query.level as string) || '';
       const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);

@@ -4,8 +4,7 @@
  * Each agent has its own SQLite DB at {storage_dir}/conversations.db.
  */
 
-import { Express, Request, Response } from 'express';
-import { requireAuth } from './auth';
+import { Express } from 'express';
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 
@@ -29,7 +28,7 @@ function openDb(agentId: string): Database.Database | null {
 
 export function setupConversations(app: Express) {
   // ── List conversations (aggregated across agents) ───────────────────
-  app.get('/api/ui/conversations', requireAuth, (req, res) => {
+  app.get('/api/ui/conversations', (req, res) => {
     try {
       // For now, query the default DB.  Multi-agent support will
       // iterate over all agent directories.
@@ -65,7 +64,7 @@ export function setupConversations(app: Express) {
   });
 
   // ── Conversation detail ─────────────────────────────────────────────
-  app.get('/api/ui/conversations/:id', requireAuth, (req, res) => {
+  app.get('/api/ui/conversations/:id', (req, res) => {
     try {
       const db = openDb('default');
       if (!db) {

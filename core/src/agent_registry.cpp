@@ -429,7 +429,7 @@ void client::agent_registry::launch_agent(agent_instance& inst) {
 	// we skip notify_startup() to avoid use-after-free.
 	inst.alive_flag = std::make_shared<std::atomic<bool>>(true);
 	std::weak_ptr<std::atomic<bool>> weak_flag = inst.alive_flag;
-	auto* ctrl = inst.controller;
+	auto* ctrl = inst.controller.get();
 	std::thread([ctrl, weak_flag]() {
 		std::this_thread::sleep_for(std::chrono::seconds(3));
 		auto flag = weak_flag.lock();

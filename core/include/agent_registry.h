@@ -105,9 +105,6 @@ struct agent_registry {
 	std::function<void(std::string_view agent_id, bool connected)> on_agent_startup;
 
 	private:
-	// Internal: create the platform session for a given config.
-	std::unique_ptr<platform_session> create_session(agent_config const& cfg);
-
 	// Internal: build and wire a full agent_instance.
 	void build_agent(agent_instance& inst);
 

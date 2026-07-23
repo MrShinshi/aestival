@@ -6,13 +6,15 @@
 #pragma once
 
 #include "bot_config.h"
-#include "platform_session.h"
 
 #include <atomic>
 #include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
+
+namespace boost::asio { class io_context; }
+namespace platform::qq { struct session; }
 
 namespace client {
 
@@ -65,7 +67,7 @@ struct agent_metrics {
 
 struct agent_instance {
 	agent_config config;
-	std::unique_ptr<platform_session> session;
+	std::unique_ptr<platform::qq::session> session; // concrete QQ (TODO: abstract interface for wechat)
 	std::unique_ptr<bot_messaging> im;		// adapter (qq_adapter / console_api)
 	std::unique_ptr<model_client> llm;		// deepseek or openai
 	std::unique_ptr<agent_controller> controller;

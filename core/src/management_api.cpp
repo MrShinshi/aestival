@@ -381,9 +381,10 @@ void management_api::start() {
 			tcp::resolver resolver(impl_->ioc);
 			auto const results = resolver.resolve(host, std::to_string(port));
 
-			impl_->acceptor.open(results->endpoint().protocol());
-			impl_->acceptor.set_option(boost::asio::socket_base::reuse_address(true));
-			impl_->acceptor.bind(*results);
+			auto const endpoint = results.begin()->endpoint();
+				impl_->acceptor.open(endpoint.protocol());
+				impl_->acceptor.set_option(boost::asio::socket_base::reuse_address(true));
+				impl_->acceptor.bind(endpoint);
 			impl_->acceptor.listen(boost::asio::socket_base::max_listen_connections);
 
 			log::info("[mgmt-api] listening on " + host + ":" + std::to_string(port));

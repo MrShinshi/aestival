@@ -33,8 +33,6 @@ struct system_command_deps {
 	runtime_mode& mode; // mutable — "switch mode" writes
 	std::mutex& mode_mutex;
 
-	// For agent management commands (Phase 1 multi-agent).
-	agent_registry* registry = nullptr;
 
 	// Callback for "stop" command
 	std::function<void()> on_stop;
@@ -47,6 +45,9 @@ struct system_command_deps {
 
 	// How to send a reply for a given message
 	std::function<bool(message_event const&, std::string_view)> reply_to;
+
+	// For agent management commands (Phase 1 multi-agent). Must be last — positional init.
+	agent_registry* registry = nullptr;
 };
 
 // ─── system_command_handler ────────────────────────────────────────────────

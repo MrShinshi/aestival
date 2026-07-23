@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Dark theme base */
+:root {
+  --color-bg: #0f0d1e;
+  --color-surface: #1e1b4b;
+  --color-accent: #818cf8;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: #e2e8f0;
+  margin: 0;
+}

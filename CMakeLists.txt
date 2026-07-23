@@ -178,6 +178,11 @@ set(CORE_SELF_ITER core/src/self_iteration.cpp)
 set(CORE_SELF_ITER_H core/include/self_iteration.h core/include/self_iteration_prompts.h)
 set(CORE_COMMAND   core/src/system_command_handler.cpp core/src/worker_pool.cpp)
 set(CORE_COMMAND_H core/include/system_command_handler.h core/include/worker_pool.h)
+set(CORE_REGISTRY   core/src/agent_registry.cpp)
+set(CORE_REGISTRY_H core/include/agent_registry.h core/include/agent_instance.h
+                    core/include/platform_session.h)
+set(CORE_MGMT      core/src/management_api.cpp)
+set(CORE_MGMT_H   core/include/management_api.h core/include/management_auth.h)
 set(CORE_UTIL      core/src/log.cpp)
 set(CORE_UTIL_H    core/include/log.h core/include/encode_utils.h
                    core/include/console_api.h core/include/token_counter.h)
@@ -215,6 +220,8 @@ set(ALL_SOURCES
     ${CORE_POLICY}    ${CORE_POLICY_H}
     ${CORE_SELF_ITER} ${CORE_SELF_ITER_H}
     ${CORE_COMMAND}   ${CORE_COMMAND_H}
+    ${CORE_REGISTRY}   ${CORE_REGISTRY_H}
+    ${CORE_MGMT}      ${CORE_MGMT_H}
     ${CORE_UTIL}      ${CORE_UTIL_H}
     ${CORE_INCLUDE_H}
     ${PLAT_LLM}       ${PLAT_LLM_H}
@@ -276,8 +283,11 @@ source_group("core\\context"                             FILES ${CORE_CONTEXT}  
 source_group("core\\policy"                              FILES ${CORE_POLICY}    ${CORE_POLICY_H})
 source_group("core\\self_iteration"                      FILES ${CORE_SELF_ITER} ${CORE_SELF_ITER_H})
 source_group("core\\command"                             FILES ${CORE_COMMAND}   ${CORE_COMMAND_H})
+source_group("core\registry"                           FILES ${CORE_REGISTRY}   ${CORE_REGISTRY_H})
+source_group("core\management"                          FILES ${CORE_MGMT}      ${CORE_MGMT_H})
 source_group("core\\include"                             FILES ${CORE_INCLUDE_H})
-source_group("core\\util"                                FILES ${CORE_UTIL}      ${CORE_UTIL_H})
+source_group("core\\util"                                FILES ${CORE_UTIL}      ${CORE_MGMT_H}
+	    ${CORE_UTIL}      ${CORE_UTIL_H})
 source_group("platform\\llm"                             FILES ${PLAT_LLM}       ${PLAT_LLM_H})
 source_group("platform\\http"                            FILES ${PLAT_HTTP}      ${PLAT_HTTP_H})
 source_group("platform\\websocket"                       FILES ${PLAT_WS}        ${PLAT_WS_H})

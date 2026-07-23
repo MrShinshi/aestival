@@ -66,7 +66,7 @@ struct qq_adapter : client::bot_messaging {
 	}
 };
 
-std::unique_ptr<client::bot_messaging> make_im_adapter(platform::qq::session& s, client::bot_config const&) {
+std::unique_ptr<client::bot_messaging> make_im_adapter(platform::qq::session& s, client::agent_config const&) {
 	return std::make_unique<qq_adapter>(s);
 }
 

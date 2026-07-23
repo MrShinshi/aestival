@@ -6,38 +6,29 @@
 #include "stdafx.h"
 
 #include "agent_controller.h"
+#include "agent_instance.h"
 #include "agent_reach_client.h"
 #include "agent_reach_plugin.h"
+#include "agent_registry.h"
 #include "bot_config.h"
 #include "chat_storage_sqlite.h"
 #include "console_api.h"
 #include "log.h"
+#include "management_api.h"
 #include "plugin_manager.h"
 #include "self_iteration.h"
 #include "simple_test_plugin.h"
 
-#include "platform/qq/session.h"
-
 #include <iostream>
 
-std::unique_ptr<client::model_client> make_model_client(client::bot_config const& cfg);
-std::unique_ptr<client::bot_messaging> make_im_adapter(platform::qq::session&, client::bot_config const&);
-void wire_qq_events(client::bot_messaging& im, std::function<void(client::message_event const&)> cb);
+// ─── LLM factory (defined in app/llm_adapter.cpp) ──────────────────────────
+std::unique_ptr<client::model_client> make_model_client(client::agent_config const& cfg, bool verify_tls);
 
 namespace {
 
 static constexpr auto k_qq_poll_interval = std::chrono::seconds(1);
 
-platform::qq::session* g_bot = nullptr;
-std::atomic<bool> g_connected{false};
-std::mutex g_signal_mutex;
-std::condition_variable g_signal_cv;
-
-void signal_handler(int) {
-	client::log::info("Shutting down...");
-	if (g_bot)
-		g_bot->stop();
-}
+// ── path helpers ───────────────────────────────────────────────────────────
 
 static std::string exe_dir(char const* argv0) {
 	std::filesystem::path p(argv0);
@@ -77,13 +68,13 @@ static std::string resolve_path(std::string const& base_dir, std::string const& 
 	return (std::filesystem::path(base_dir) / fp).lexically_normal().string();
 }
 
-// ─── console mode ──────────────────────────────────────────────────────
+// ── console mode ───────────────────────────────────────────────────────────
 
-int run_console_mode(client::bot_config const& config, client::plugin_manager& plugins,
+int run_console_mode(client::agent_config const& config, client::plugin_manager& plugins,
 					 std::shared_ptr<client::agent_reach_client> reach_client,
-					 std::function<std::string(bool)> on_self_iterate) {
+					 std::function<std::string(bool)> on_self_iterate, bool verify_tls) {
 	client::console_api con;
-	auto llm = make_model_client(config);
+	auto llm = make_model_client(config, verify_tls);
 	client::agent_controller controller(con, plugins, std::move(llm), config, reach_client);
 	controller.on_self_iterate = on_self_iterate;
 
@@ -112,105 +103,13 @@ int run_console_mode(client::bot_config const& config, client::plugin_manager& p
 	return 0;
 }
 
-// ─── QQ mode ───────────────────────────────────────────────────────────
+// ── self-iteration callback factory ────────────────────────────────────────
 
-int run_qq_mode(client::bot_config const& config, client::plugin_manager& plugins,
-				std::shared_ptr<client::agent_reach_client> reach_client,
-				std::function<std::string(bool)> on_self_iterate) {
-	platform::qq::session bot(config.qq_app_id, config.qq_app_secret, config.verify_tls);
-	g_bot = &bot;
-
-	std::signal(SIGINT, signal_handler);
-	std::signal(SIGTERM, signal_handler);
-
-	auto im = make_im_adapter(bot, config);
-	auto llm = make_model_client(config);
-
-	bot.on_connect([](bool connected, std::string_view reason) {
-		std::ostringstream s;
-		s << "[main] " << (connected ? "connected" : "disconnected") << ": " << reason;
-		if (connected) {
-			client::log::info(s.str());
-			g_connected = true;
-			g_signal_cv.notify_one();
-		} else {
-			client::log::warn(s.str());
-		}
-	});
-
-	client::agent_controller controller(*im, plugins, std::move(llm), config, reach_client);
-	controller.on_self_iterate = on_self_iterate;
-
-	wire_qq_events(*im, [&controller](client::message_event const& m) { controller.handle_message(m); });
-
-	bot.start();
-
-	client::log::info("Waiting for connection...");
-	{
-		std::unique_lock<std::mutex> lk(g_signal_mutex);
-		g_signal_cv.wait(lk, [] { return g_connected.load() || !g_bot->is_running(); });
-	}
-
-	if (!g_bot->is_running()) {
-		client::log::error("Failed to start");
-		return 1;
-	}
-
-	client::log::info("=== Connected! ===");
-	controller.notify_startup();
-
-	while (g_bot->is_running())
-		std::this_thread::sleep_for(k_qq_poll_interval);
-
-	client::log::info("=== Shutdown complete ===");
-	return 0;
-}
-
-} // namespace
-
-int main(int argc, char* argv[]) {
-	bool console_mode = false;
-	for (int i = 1; i < argc; ++i) {
-		std::string_view arg(argv[i]);
-		if (arg == "--console" || arg == "-c")
-			console_mode = true;
-	}
-
-	std::string base = exe_dir(argv[0]);
-	client::log::info("[main] exe dir: " + base);
-
-	client::bot_config config;
-	try {
-		config = client::load_bot_config(resolve_path(base, "config/bot_config.json"));
-	} catch (std::exception const& ex) {
-		client::log::error(std::string("[main] failed to load config: ") + ex.what());
-		return 1;
-	}
-
-	config.storage_dir = resolve_path(base, config.storage_dir);
-	config.workspace = resolve_path(base, config.workspace);
-	if (!config.log_file.empty())
-		config.log_file = resolve_path(base, config.log_file);
-
-	client::log::init(config.log_file);
-
-	client::plugin_manager plugins;
-	plugins.register_plugin(std::make_shared<client::plugins::simple_test_plugin>());
-
-	auto reach = std::make_shared<client::agent_reach_client>(config.verify_tls);
-	if (config.agent_reach_enabled)
-		plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>(reach));
-
-	auto si_db = std::make_shared<client::sqlite_backend>(config.storage_dir + "/conversations.db");
-	client::self_iteration_config si_cfg;
-	si_cfg.enabled = config.self_iterate_enabled;
-	si_cfg.interval_hours = config.self_iterate_interval_hours;
-	si_cfg.min_conversations = config.self_iterate_min_conversations;
-	si_cfg.claude_path = config.claude_code_path;
-
-	auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db, resolve_workspace(base, config.workspace));
-
-	auto on_si = [si](bool dry) -> std::string {
+static std::function<std::string(bool)>
+make_si_callback(std::shared_ptr<client::self_iteration_engine> si) {
+	if (!si)
+		return {};
+	return [si](bool dry) -> std::string {
 		auto r = dry ? si->dry_run() : si->run();
 		if (!r.error.empty())
 			return "## 自迭代失败\n\n" + r.error;
@@ -230,9 +129,129 @@ int main(int argc, char* argv[]) {
 			md << "\n\n" << r.summary;
 		return md.str();
 	};
+}
 
-	if (console_mode)
-		return run_console_mode(config, plugins, reach, on_si);
-	else
-		return run_qq_mode(config, plugins, reach, on_si);
+} // namespace
+
+// ─── main ──────────────────────────────────────────────────────────────────
+
+int main(int argc, char* argv[]) {
+	bool console_mode = false;
+	for (int i = 1; i < argc; ++i) {
+		std::string_view arg(argv[i]);
+		if (arg == "--console" || arg == "-c")
+			console_mode = true;
+	}
+
+	std::string base = exe_dir(argv[0]);
+	client::log::info("[main] exe dir: " + base);
+
+	// ── load config ──────────────────────────────────────────────────────
+	client::bot_config cfg;
+	try {
+		cfg = client::load_bot_config(resolve_path(base, "config/bot_config.json"));
+	} catch (std::exception const& ex) {
+		client::log::error(std::string("[main] failed to load config: ") + ex.what());
+		return 1;
+	}
+
+	// Resolve paths relative to exe dir
+	for (auto& a : cfg.agents) {
+		a.storage_dir = resolve_path(base, a.storage_dir);
+		a.workspace = resolve_path(base, a.workspace);
+	}
+	if (!cfg.global.log_file.empty())
+		cfg.global.log_file = resolve_path(base, cfg.global.log_file);
+
+	client::log::init(cfg.global.log_file);
+
+	// ── shared dependencies ──────────────────────────────────────────────
+	client::plugin_manager plugins;
+	plugins.register_plugin(std::make_shared<client::plugins::simple_test_plugin>());
+
+	auto reach = std::make_shared<client::agent_reach_client>(cfg.global.verify_tls);
+
+	// ── console mode (legacy, bypasses registry) ─────────────────────────
+	if (console_mode) {
+		// Pick the first agent config for console mode, or a default.
+		client::agent_config const& ac = cfg.agents.empty() ? client::agent_config{} : cfg.agents[0];
+		if (ac.agent_reach_enabled)
+			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>(reach));
+
+		auto si_db = std::make_shared<client::sqlite_backend>(ac.storage_dir + "/conversations.db");
+		client::self_iteration_config si_cfg;
+		si_cfg.enabled = ac.self_iterate_enabled;
+		si_cfg.interval_hours = ac.self_iterate_interval_hours;
+		si_cfg.min_conversations = ac.self_iterate_min_conversations;
+		si_cfg.claude_path = ac.claude_code_path;
+		auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db,
+																   resolve_workspace(base, ac.workspace));
+
+		return run_console_mode(ac, plugins, reach, make_si_callback(si), cfg.global.verify_tls);
+	}
+
+	// ── QQ / multi-agent mode ────────────────────────────────────────────
+	client::agent_registry::shared_deps deps{plugins, reach, resolve_path(base, "config/bot_config.json")};
+	client::agent_registry registry(deps);
+
+	// For each agent that has agent_reach_enabled, register the search plugin once.
+	// (agent_reach_plugin is stateless; registering it per agent is harmless.)
+	for (auto const& a : cfg.agents) {
+		if (a.agent_reach_enabled) {
+			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>(reach));
+			break; // only need to register once
+		}
+	}
+
+	// Handle shutdown signals
+	std::atomic<bool> shutdown{false};
+	std::signal(SIGINT, [](int) { /* handled via polling */ });
+	std::signal(SIGTERM, [](int) {});
+
+	registry.on_agent_startup = [](std::string_view agent_id, bool connected) {
+		if (connected)
+			client::log::info("[main] agent '" + std::string(agent_id) + "' started successfully");
+		else
+			client::log::warn("[main] agent '" + std::string(agent_id) + "' failed to connect");
+	};
+
+	try {
+		registry.start_all(cfg);
+	} catch (std::exception const& ex) {
+		client::log::error(std::string("[main] agent startup failed: ") + ex.what());
+		return 1;
+	}
+
+	// ── Management API (Phase 2) ─────────────────────────────────────────
+	client::management_api mgmt_api(registry, cfg.global);
+	if (cfg.global.management_api_enabled && !cfg.global.jwt_secret.empty()) {
+		try {
+			mgmt_api.start();
+			client::log::info("[main] management API started on " + cfg.global.management_listen);
+		} catch (std::exception const& ex) {
+			client::log::warn(std::string("[main] management API failed to start: ") + ex.what());
+		}
+	}
+
+	client::log::info("=== aestival running (" + std::to_string(registry.count()) + " agents) ===");
+
+	// Main loop: poll until all agents are stopped.
+	// In the future, the management API thread will also run alongside.
+	while (true) {
+		auto agents = registry.list_agents();
+		bool any_running = false;
+		for (auto const& [id, status] : agents) {
+			if (status == client::agent_status::running || status == client::agent_status::starting) {
+				any_running = true;
+				break;
+			}
+		}
+		if (!any_running)
+			break;
+		std::this_thread::sleep_for(k_qq_poll_interval);
+	}
+
+	registry.stop_all();
+	client::log::info("=== Shutdown complete ===");
+	return 0;
 }

@@ -158,11 +158,10 @@ struct openai_adapter : client::model_client {
 	}
 };
 
-std::unique_ptr<client::model_client> make_model_client(client::bot_config const& cfg) {
-	// Respect configured llm_provider; fall back to deepseek when unset.
+std::unique_ptr<client::model_client> make_model_client(client::agent_config const& cfg, bool verify_tls) {
 	if (cfg.llm_provider == "openai")
 		return std::make_unique<openai_adapter>(cfg.openai_api_key, cfg.openai_model, cfg.openai_base_url,
-												cfg.verify_tls);
+												verify_tls);
 	return std::make_unique<deepseek_adapter>(cfg.deepseek_api_key, cfg.deepseek_model, cfg.deepseek_user_token,
-											  cfg.deepseek_waf_cookie, cfg.verify_tls);
+											  cfg.deepseek_waf_cookie, verify_tls);
 }

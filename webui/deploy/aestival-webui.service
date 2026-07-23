@@ -1,0 +1,37 @@
+# systemd user service for the Web UI backend
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp aestival-webui.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable aestival-webui.service
+#   systemctl --user start aestival-webui.service
+#
+# Logs:
+#   journalctl --user -u aestival-webui.service -f
+
+[Unit]
+Description=aestival Web UI Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/aestival/webui/backend
+ExecStart=%h/.local/share/fnm/aliases/default/bin/node dist/index.js
+EnvironmentFile=%h/aestival/webui/backend/.env
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/aestival/webui/backend
+ReadWritePaths=%h/aestival/bin
+ReadOnlyPaths=%h/aestival/bin/contexts
+ReadOnlyPaths=%h/aestival/bin/bot.log
+
+[Install]
+WantedBy=default.target

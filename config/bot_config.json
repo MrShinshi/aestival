@@ -1,22 +1,39 @@
 {
-  "qq": {
-    "app_id": "",
-    "app_secret": ""
-  },
-  "deepseek": {
-    "api_key": "",
-    "model": "deepseek-chat",
-    "user_token": "",
-    "waf_cookie": ""
-  },
-  "admins": [
-    "793F1ADD1643A00C76554D258614EC83"
+  "agents": [
+    {
+      "id": "feiying-qq",
+      "name": "绯英",
+      "enabled": true,
+      "platform": "qq",
+      "qq": {
+        "app_id": "",
+        "app_secret": ""
+      },
+      "llm_provider": "deepseek",
+      "deepseek": {
+        "api_key": "",
+        "model": "deepseek-chat",
+        "user_token": "EWYgqUi4TeZPSjqNEZf0DqbDPOtVyq2esh71x/jyp9m3x35cv3ul4KYYKXuSv6tI",
+        "waf_cookie": "smidV2=20260703175545090c8d3ba0e4b999a286aa4580b96f5300c0fe7428ee4c100; .thumbcache_6b2e5483f9d858d7c661c5e276b6a6ae=IqiJ5fl7paO0FdnnqpWoXWfj0uz8wJZCX27Ny5tTy42I5meHULoAaiHBtaCSSMBJfPPbbJpDNu3Cx+Zm4QZ+hg%3D%3D"
+      },
+      "admins": [
+        "793F1ADD1643A00C76554D258614EC83"
+      ],
+      "mode": "agent",
+      "self_iteration": {
+        "enabled": false,
+        "interval_hours": 24,
+        "min_conversations": 10,
+        "claude_path": "claude"
+      }
+    }
   ],
-  "mode": "agent",
-  "self_iteration": {
-    "enabled": false,
-    "interval_hours": 24,
-    "min_conversations": 10,
-    "claude_path": "claude"
+  "global": {
+    "verify_tls": true,
+    "management_api": {
+      "enabled": false,
+      "listen": "127.0.0.1:9090",
+      "jwt_secret": ""
+    }
   }
 }

@@ -182,7 +182,7 @@ jobs:
           "
           # 2. package & push in one compressed pipe (13 MB → ~4 MB, single TCP)
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
-          tar -czf - -C bin aestival -C ../workspace . |
+          tar -czf - -C bin aestival -C .. workspace |
             ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
               tar -xzf - -C /home/shinshi/aestival/bin &&
               mv /home/shinshi/aestival/bin/aestival /home/shinshi/aestival/bin/aestival.new

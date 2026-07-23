@@ -6,7 +6,7 @@
 #pragma once
 
 #include "bot_messaging.h"
-#include "bot_config.h"
+#include "bot_config.h"   // agent_config
 #include "model_client.h"
 #include "chat_context_manager.h"
 #include "agent_reach_client.h"
@@ -24,7 +24,7 @@ namespace client {
 struct agent_controller {
 	public:
 	agent_controller(bot_messaging& bot, plugin_manager& plugins, std::unique_ptr<model_client> llm,
-					 bot_config const& config, std::shared_ptr<agent_reach_client> reach);
+					 agent_config const& config, std::shared_ptr<agent_reach_client> reach);
 	~agent_controller();
 
 	void handle_message(message_event const& message);

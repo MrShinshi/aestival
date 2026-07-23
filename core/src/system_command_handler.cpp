@@ -5,6 +5,7 @@
  */
 #include "stdafx.h"
 #include "system_command_handler.h"
+#include "agent_registry.h"
 #include "model_client.h"
 #include "encode_utils.h"
 #include "log.h"
@@ -252,6 +253,69 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 			d.reply_to(msg, result);
 		} else {
 			d.reply_to(msg, "自迭代模块未配置。");
+		}
+		return true;
+	}
+
+	// ─── agent management (Phase 1 multi-agent) ─────────────────────────
+
+	if (n == "agent list") {
+		if (!d.registry) {
+			d.reply_to(msg, "Agent 管理未启用。");
+			return true;
+		}
+		auto agents = d.registry->list_agents();
+		if (agents.empty()) {
+			d.reply_to(msg, "无 Agent。");
+			return true;
+		}
+		std::ostringstream md;
+		md << "## Agent 列表\n\n| ID | 状态 |\n|----|------|\n";
+		for (auto const& [id, status] : agents)
+			md << "| " << id << " | " << to_string(status) << " |\n";
+		md << "\n共 " << agents.size() << " 个";
+		d.reply_to(msg, md.str());
+		return true;
+	}
+
+	if (client::starts_with(n, "agent stop ")) {
+		if (!is_admin(msg, d.admin_ids)) { d.reply_to(msg, "Permission denied."); return true; }
+		if (!d.registry) { d.reply_to(msg, "Agent 管理未启用。"); return true; }
+		std::string id = client::trim(n.substr(11));
+		if (id.empty()) { d.reply_to(msg, "用法: agent stop <id>"); return true; }
+		try {
+			d.registry->stop_agent(id);
+			d.reply_to(msg, "Agent '" + id + "' 已停止。");
+		} catch (std::exception const& ex) {
+			d.reply_to(msg, std::string("错误: ") + ex.what());
+		}
+		return true;
+	}
+
+	if (client::starts_with(n, "agent start ")) {
+		if (!is_admin(msg, d.admin_ids)) { d.reply_to(msg, "Permission denied."); return true; }
+		if (!d.registry) { d.reply_to(msg, "Agent 管理未启用。"); return true; }
+		std::string id = client::trim(n.substr(12));
+		if (id.empty()) { d.reply_to(msg, "用法: agent start <id>"); return true; }
+		try {
+			d.registry->start_agent(id);
+			d.reply_to(msg, "Agent '" + id + "' 已启动。");
+		} catch (std::exception const& ex) {
+			d.reply_to(msg, std::string("错误: ") + ex.what());
+		}
+		return true;
+	}
+
+	if (client::starts_with(n, "agent remove ")) {
+		if (!is_admin(msg, d.admin_ids)) { d.reply_to(msg, "Permission denied."); return true; }
+		if (!d.registry) { d.reply_to(msg, "Agent 管理未启用。"); return true; }
+		std::string id = client::trim(n.substr(13));
+		if (id.empty()) { d.reply_to(msg, "用法: agent remove <id>"); return true; }
+		try {
+			d.registry->remove_agent(id);
+			d.reply_to(msg, "Agent '" + id + "' 已移除。");
+		} catch (std::exception const& ex) {
+			d.reply_to(msg, std::string("错误: ") + ex.what());
 		}
 		return true;
 	}

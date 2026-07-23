@@ -69,7 +69,7 @@ static std::string format_display_content(client::message_event const& msg) {
 // ─── agent_controller ────────────────────────────────────────────────────
 
 client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& plugins,
-										   std::unique_ptr<model_client> llm, bot_config const& config,
+										   std::unique_ptr<model_client> llm, agent_config const& config,
 										   std::shared_ptr<agent_reach_client> reach)
 	: bot_(bot), plugins_(plugins), llm_(std::move(llm)), reach_(std::move(reach)),
 	  policy_(policy_engine::config{config.max_messages_per_minute, k_policy_max_turns_per_convo,

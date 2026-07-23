@@ -18,6 +18,7 @@
 namespace client {
 
 struct model_client;
+struct agent_registry;
 
 // ─── system_command_deps ─────────────────────────────────────────────────
 // All external state that handle_system_command needs.
@@ -31,6 +32,9 @@ struct system_command_deps {
 
 	runtime_mode& mode; // mutable — "switch mode" writes
 	std::mutex& mode_mutex;
+
+	// For agent management commands (Phase 1 multi-agent).
+	agent_registry* registry = nullptr;
 
 	// Callback for "stop" command
 	std::function<void()> on_stop;

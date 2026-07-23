@@ -34,6 +34,47 @@ static std::string method_str(http::verb v) {
 	}
 }
 
+namespace {
+	// Maximum lengths for user-supplied string fields.
+	constexpr size_t k_max_agent_id = 64;
+	constexpr size_t k_max_agent_name = 128;
+	constexpr size_t k_max_app_id = 256;
+	constexpr size_t k_max_api_key = 512;
+	constexpr size_t k_max_path = 1024;
+	constexpr size_t k_max_body = 65536;  // 64 KiB
+
+	// Allowed characters in agent IDs.
+	bool is_valid_agent_id(std::string_view id) {
+		if (id.empty() || id.size() > k_max_agent_id)
+			return false;
+		for (char c : id)
+			if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+				return false;
+		return true;
+	}
+
+	// Reject path components that traverse outside the intended directory.
+	bool is_safe_path_component(std::string_view path) {
+		if (path.empty() || path.size() > k_max_path)
+			return false;
+		// Disallow absolute paths, traversal sequences, and null bytes.
+		if (path[0] == '/' || path[0] == '\\')
+			return false;
+		if (path.find("..") != std::string_view::npos)
+			return false;
+		if (path.find('\0') != std::string_view::npos)
+			return false;
+		return true;
+	}
+
+	// Truncate a string to max_len, returning the original if within limit.
+	std::string truncate_str(std::string s, size_t max_len) {
+		if (s.size() > max_len)
+			s.resize(max_len);
+		return s;
+	}
+} // namespace
+
 static std::string json_response(http::status status, nlohmann::json const& body) {
 	auto j = nlohmann::json::object();
 	j["status"] = status == http::status::ok ? "ok" : "error";
@@ -175,26 +216,32 @@ struct management_api::impl {
 		auto j = nlohmann::json::parse(body);
 		agent_config cfg;
 
-		cfg.id = j.value("id", "");
-		cfg.name = j.value("name", "");
+		cfg.id = truncate_str(j.value("id", ""), k_max_agent_id);
+		if (!is_valid_agent_id(cfg.id))
+			throw std::runtime_error("invalid agent id: must be 1-64 alphanumeric, hyphens, or underscores");
+		cfg.name = truncate_str(j.value("name", ""), k_max_agent_name);
 		cfg.platform = j.value("platform", "qq");
 		cfg.enabled = j.value("enabled", true);
 
 		if (auto qq = j.find("qq"); qq != j.end()) {
-			cfg.qq_app_id = qq->value("app_id", "");
-			cfg.qq_app_secret = qq->value("app_secret", "");
+			cfg.qq_app_id = truncate_str(qq->value("app_id", ""), k_max_app_id);
+			cfg.qq_app_secret = truncate_str(qq->value("app_secret", ""), k_max_api_key);
 		}
 		cfg.llm_provider = j.value("llm_provider", "deepseek");
 		if (auto ds = j.find("deepseek"); ds != j.end()) {
-			cfg.deepseek_api_key = ds->value("api_key", "");
-			cfg.deepseek_model = ds->value("model", "deepseek-chat");
+			cfg.deepseek_api_key = truncate_str(ds->value("api_key", ""), k_max_api_key);
+			cfg.deepseek_model = truncate_str(ds->value("model", "deepseek-chat"), k_max_app_id);
 		}
-		cfg.workspace = j.value("workspace", cfg.workspace);
-		cfg.storage_dir = j.value("storage_dir", cfg.storage_dir);
+		cfg.workspace = truncate_str(j.value("workspace", cfg.workspace), k_max_path);
+		if (!is_safe_path_component(cfg.workspace))
+			throw std::runtime_error("invalid workspace path");
+		cfg.storage_dir = truncate_str(j.value("storage_dir", cfg.storage_dir), k_max_path);
+		if (!is_safe_path_component(cfg.storage_dir))
+			throw std::runtime_error("invalid storage_dir path");
 		if (auto admins = j.find("admins"); admins != j.end() && admins->is_array())
 			for (auto const& a : *admins)
 				if (a.is_string())
-					cfg.admin_user_ids.push_back(a.get<std::string>());
+					cfg.admin_user_ids.push_back(truncate_str(a.get<std::string>(), k_max_app_id));
 		cfg.default_mode = j.value("mode", "agent") == "agent" ? runtime_mode::agent : runtime_mode::plugin;
 
 		registry.add_agent(cfg);
@@ -219,13 +266,17 @@ struct management_api::impl {
 
 		auto cfg = inst->config;
 		if (j.contains("name"))
-			cfg.name = j["name"].get<std::string>();
+			cfg.name = truncate_str(j["name"].get<std::string>(), k_max_agent_name);
 		if (j.contains("enabled"))
 			cfg.enabled = j["enabled"].get<bool>();
 		if (j.contains("llm_provider"))
-			cfg.llm_provider = j["llm_provider"].get<std::string>();
-		if (j.contains("workspace"))
-			cfg.workspace = j["workspace"].get<std::string>();
+			cfg.llm_provider = truncate_str(j["llm_provider"].get<std::string>(), k_max_app_id);
+		if (j.contains("workspace")) {
+			auto ws = j["workspace"].get<std::string>();
+			if (!is_safe_path_component(ws))
+				throw std::runtime_error("invalid workspace path");
+			cfg.workspace = truncate_str(std::move(ws), k_max_path);
+		}
 		if (j.contains("mode"))
 			cfg.default_mode = j["mode"].get<std::string>() == "agent" ? runtime_mode::agent : runtime_mode::plugin;
 
@@ -402,8 +453,10 @@ void management_api::start() {
 
 				// Read request
 				beast::flat_buffer buffer;
-				http::request<http::string_body> req;
-				http::read(socket, buffer, req, ec);
+				http::request_parser<http::string_body> parser;
+				parser.body_limit(k_max_body);
+				http::read(socket, buffer, parser, ec);
+				auto req = parser.release();
 				if (ec) {
 					log::warn("[mgmt-api] read error: " + ec.message());
 					continue;

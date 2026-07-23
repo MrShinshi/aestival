@@ -159,6 +159,8 @@ void client::agent_registry::stop_all() {
 		if (inst->status == agent_status::running || inst->status == agent_status::starting) {
 			inst->status = agent_status::stopping;
 			try {
+				if (inst->alive_flag)
+					inst->alive_flag->store(false);
 				if (inst->controller)
 					inst->controller.reset(); // destructor stops worker pool
 				if (inst->im)
@@ -178,6 +180,16 @@ void client::agent_registry::add_agent(agent_config cfg) {
 
 	if (cfg.id.empty())
 		throw std::runtime_error("agent id must not be empty");
+	// Reject invalid characters and path traversal in the ID.
+	for (char c : cfg.id) {
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			  (c >= '0' && c <= '9') || c == '_' || c == '-'))
+			throw std::runtime_error("agent id contains invalid character: " + std::string(1, c));
+	}
+	if (cfg.id.find("..") != std::string::npos)
+		throw std::runtime_error("agent id must not contain path traversal");
+	if (cfg.id.size() > 64)
+		throw std::runtime_error("agent id too long (max 64)");
 	if (agents_.count(cfg.id))
 		throw std::runtime_error("agent '" + cfg.id + "' already exists");
 
@@ -212,6 +224,8 @@ void client::agent_registry::remove_agent(std::string_view id) {
 	auto& inst = *it->second;
 	if (inst.status == agent_status::running || inst.status == agent_status::starting) {
 		inst.status = agent_status::stopping;
+		if (inst.alive_flag)
+			inst.alive_flag->store(false);
 		inst.controller.reset();
 		inst.im->stop();
 		inst.status = agent_status::stopped;
@@ -268,6 +282,8 @@ void client::agent_registry::stop_agent(std::string_view id) {
 		return;
 
 	inst.status = agent_status::stopping;
+		if (inst.alive_flag)
+			inst.alive_flag->store(false);
 	inst.controller.reset();
 	inst.im->stop();
 	inst.status = agent_status::stopped;
@@ -408,17 +424,18 @@ void client::agent_registry::launch_agent(agent_instance& inst) {
 	inst.session->start();
 
 	// Notify after a short delay to allow connection.
-	// In the original code, main() waited on a condition_variable.
-	// Here we fire-and-notify; the connect callback above updates status.
-	// The controller's notify_startup() is called after connection.
-	// We schedule it via a detached thread for simplicity.
-	auto* inst_ptr = &inst;
-	std::thread([inst_ptr]() {
-		// Wait a moment for the websocket to connect.
+	// Use a weak_ptr to the instance's lifecycle flag — if the agent is
+	// stopped/destroyed before the delay elapses, the flag is signaled and
+	// we skip notify_startup() to avoid use-after-free.
+	inst.alive_flag = std::make_shared<std::atomic<bool>>(true);
+	std::weak_ptr<std::atomic<bool>> weak_flag = inst.alive_flag;
+	auto* ctrl = inst.controller;
+	std::thread([ctrl, weak_flag]() {
 		std::this_thread::sleep_for(std::chrono::seconds(3));
-		if (inst_ptr->controller) {
+		auto flag = weak_flag.lock();
+		if (flag && flag->load() && ctrl) {
 			try {
-				inst_ptr->controller->notify_startup();
+				ctrl->notify_startup();
 			} catch (...) {
 			}
 		}

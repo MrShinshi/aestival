@@ -203,10 +203,13 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	// Handle shutdown signals
-	std::atomic<bool> shutdown{false};
-	std::signal(SIGINT, [](int) { /* handled via polling */ });
-	std::signal(SIGTERM, [](int) {});
+	// Handle shutdown signals.
+	// Must be a static atomic: signal handlers accept only function pointers
+	// (no captures), but a captureless lambda can access a static.
+	static std::atomic<bool> s_shutdown{false};
+	s_shutdown.store(false);
+	std::signal(SIGINT,  [](int) { s_shutdown.store(true); });
+	std::signal(SIGTERM, [](int) { s_shutdown.store(true); });
 
 	registry.on_agent_startup = [](std::string_view agent_id, bool connected) {
 		if (connected)
@@ -235,9 +238,8 @@ int main(int argc, char* argv[]) {
 
 	client::log::info("=== aestival running (" + std::to_string(registry.count()) + " agents) ===");
 
-	// Main loop: poll until all agents are stopped.
-	// In the future, the management API thread will also run alongside.
-	while (true) {
+	// Main loop: poll until all agents are stopped or shutdown signal received.
+	while (!s_shutdown.load()) {
 		auto agents = registry.list_agents();
 		bool any_running = false;
 		for (auto const& [id, status] : agents) {
@@ -251,6 +253,9 @@ int main(int argc, char* argv[]) {
 		std::this_thread::sleep_for(k_qq_poll_interval);
 	}
 
+	if (s_shutdown.load())
+		client::log::info("=== Shutdown signal received ===");
+	mgmt_api.stop();
 	registry.stop_all();
 	client::log::info("=== Shutdown complete ===");
 	return 0;

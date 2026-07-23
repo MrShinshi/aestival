@@ -77,6 +77,12 @@ struct agent_instance {
 
 	mutable std::mutex mutex; // protects status + metrics.last_error
 
+	// Lifecycle flag: shared_ptr held by the instance, weak_ptr captured by
+	// the delayed notification thread in launch_agent().  When the instance
+	// is stopped/destroyed, this flag is signaled before controller.reset()
+	// so the thread can observe the cancellation and skip notify_startup().
+	std::shared_ptr<std::atomic<bool>> alive_flag;
+
 	agent_instance() = default;
 	agent_instance(agent_instance const&) = delete;
 	agent_instance& operator=(agent_instance const&) = delete;

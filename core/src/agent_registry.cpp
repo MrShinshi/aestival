@@ -3,6 +3,8 @@
  * Copyright (c) 2026 MrShinshi
  * Licensed under MIT
  */
+#include "stdafx.h"
+#include "agent_registry.h"
 #include "agent_controller.h"
 #include "bot_messaging.h"
 #include "chat_storage_sqlite.h"

@@ -146,6 +146,7 @@ jobs:
           cmake -B build \
             -DCMAKE_PROJECT_NAME=aestival \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DAESTIVAL_WERROR=ON \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_BOOTSTRAPPED=ON \
             "${GENERATOR_ARGS[@]}"
@@ -234,6 +235,11 @@ jobs:
         working-directory: webui/backend
         run: npm run build
 
+      - name: Audit backend deps
+        working-directory: webui/backend
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       # ── Frontend ─────────────────────────────────────────────────────────
       - name: Install frontend deps
         working-directory: webui/frontend
@@ -246,6 +252,11 @@ jobs:
       - name: Build frontend
         working-directory: webui/frontend
         run: npm run build
+
+      - name: Audit frontend deps
+        working-directory: webui/frontend
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
       # ── Package ──────────────────────────────────────────────────────────
       - name: Package webui artifacts

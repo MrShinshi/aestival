@@ -50,6 +50,7 @@ static std::string strip_json_fences(std::string_view s) {
 		try {
 			return boost::regex(R"(^```(?:json)?\s*\n?)");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("");
 		}
 	}();
@@ -62,6 +63,7 @@ static std::string strip_json_fences(std::string_view s) {
 		try {
 			return boost::regex(R"(\n?```\s*$)");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("");
 		}
 	}();

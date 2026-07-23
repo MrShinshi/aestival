@@ -95,6 +95,7 @@ boost::asio::awaitable<bool> session::login_async() {
 
 		co_return true;
 	} catch (...) {
+		client::log::error("[qq-auth] login_async failed with unknown error");
 	}
 
 	co_return false;

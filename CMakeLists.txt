@@ -273,6 +273,16 @@ else()
     target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
 endif()
 
+# Treat warnings as errors in CI (opt-in so local dev isn't blocked).
+option(AESTIVAL_WERROR "Treat compiler warnings as errors" OFF)
+if(AESTIVAL_WERROR)
+    if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /WX)
+    else()
+        target_compile_options(${PROJECT_NAME} PRIVATE -Werror)
+    endif()
+endif()
+
 # ─── IDE source_group (filters in VS / CLion) ──────────────────────────────
 
 source_group("app"                                       FILES ${APP_SOURCES}    ${APP_HEADERS})

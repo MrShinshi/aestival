@@ -3,8 +3,6 @@
  * Copyright (c) 2026 MrShinshi
  * Licensed under MIT
  */
-#include "stdafx.h"
-#include "agent_registry.h"
 #include "agent_controller.h"
 #include "bot_messaging.h"
 #include "chat_storage_sqlite.h"
@@ -437,6 +435,7 @@ void client::agent_registry::launch_agent(agent_instance& inst) {
 			try {
 				ctrl->notify_startup();
 			} catch (...) {
+				client::log::warn("[registry] notify_startup failed");
 			}
 		}
 	}).detach();

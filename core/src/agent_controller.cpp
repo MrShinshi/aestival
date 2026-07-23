@@ -54,6 +54,7 @@ static std::string format_display_content(client::message_event const& msg) {
 		try {
 			return boost::regex(R"(<[^<>]*>)");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("", boost::regex::basic);
 		}
 	}();
@@ -236,6 +237,7 @@ void client::agent_controller::process_agent_message(message_event const& messag
 		try {
 			chat_contexts_.summarize_with_model(cid, *llm_);
 		} catch (...) {
+			client::log::warn("[agent_controller] summarize_with_model failed for " + cid);
 		}
 
 		auto messages = build_message_list(cid);
@@ -488,6 +490,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 					return boost::regex(R"(bili\s+search\s+\"([^\"]*)\"(?:\s+--type\s+\w+)?(?:\s+-n\s+(\d+))?)",
 										boost::regex::icase);
 				} catch (...) {
+					client::log::warn("regex compile failed");
 					return boost::regex("");
 				}
 			}();
@@ -509,6 +512,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 				try {
 					return boost::regex(R"(bili\s+hot(?:\s+-n\s+(\d+))?)", boost::regex::icase);
 				} catch (...) {
+					client::log::warn("regex compile failed");
 					return boost::regex("");
 				}
 			}();
@@ -540,6 +544,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 				try {
 					return boost::regex(R"(node_name=([^&\"]+))");
 				} catch (...) {
+					client::log::warn("regex compile failed");
 					return boost::regex("");
 				}
 			}();
@@ -555,6 +560,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 				try {
 					return boost::regex(R"(r\.jina\.ai/(\S+?)(?:\"|\s|$))");
 				} catch (...) {
+					client::log::warn("regex compile failed");
 					return boost::regex("");
 				}
 			}();
@@ -573,6 +579,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 				try {
 					return boost::regex(R"(srsearch=([^&\"]+))");
 				} catch (...) {
+					client::log::warn("regex compile failed");
 					return boost::regex("");
 				}
 			}();
@@ -583,6 +590,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 					try {
 						return boost::regex(R"(srlimit=(\d+))");
 					} catch (...) {
+						client::log::warn("regex compile failed");
 						return boost::regex("");
 					}
 				}();
@@ -610,6 +618,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 				return boost::regex(R"(gh\s+search\s+repos\s+\"([^\"]*)\"(?:.*?--limit\s+(\d+))?)",
 									boost::regex::icase);
 			} catch (...) {
+				client::log::warn("regex compile failed");
 				return boost::regex("");
 			}
 		}();
@@ -632,6 +641,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 			try {
 				return boost::regex(R"(twitter\s+search\s+\"([^\"]*)\"(?:\s+-n\s+(\d+))?)", boost::regex::icase);
 			} catch (...) {
+				client::log::warn("regex compile failed");
 				return boost::regex("");
 			}
 		}();
@@ -654,6 +664,7 @@ std::string client::agent_controller::route_shell_command(std::string_view cmd) 
 			try {
 				return boost::regex(R"(query:\s*\"([^\"]*)\"(?:\s*,\s*numResults:\s*(\d+))?)?)");
 			} catch (...) {
+				client::log::warn("regex compile failed");
 				return boost::regex("");
 			}
 		}();

@@ -1,0 +1,39 @@
+{
+  "agents": [
+    {
+      "id": "my-agent",
+      "name": "my-agent-name",
+      "enabled": false,
+      "platform": "qq",
+      "qq": {
+        "app_id": "",
+        "app_secret": ""
+      },
+      "llm_provider": "deepseek",
+      "deepseek": {
+        "api_key": "",
+        "model": "deepseek-chat",
+        "user_token": "",
+        "waf_cookie": ""
+      },
+      "admins": [
+        "YOUR_QQ_OPENID"
+      ],
+      "mode": "agent",
+      "self_iteration": {
+        "enabled": false,
+        "interval_hours": 24,
+        "min_conversations": 10,
+        "claude_path": "claude"
+      }
+    }
+  ],
+  "global": {
+    "verify_tls": true,
+    "management_api": {
+      "enabled": false,
+      "listen": "127.0.0.1:9090",
+      "jwt_secret": "generate-a-random-secret-here"
+    }
+  }
+}

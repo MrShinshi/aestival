@@ -27,6 +27,12 @@ TARGET="${AESTIVAL_TARGET:-shinshi@122.51.129.97}"
 REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
 REMOTE_BIN="$REMOTE_DIR/bin"
 TEMP_DIR="$(mktemp -d)"
+
+# Server host key for TOFU protection (Ed25519).
+SERVER_HOST_KEY="${AESTIVAL_HOST_KEY:-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn}"
+KNOWN_HOSTS_FILE="$(mktemp)"
+echo "122.51.129.97 $SERVER_HOST_KEY" > "$KNOWN_HOSTS_FILE"
+SSH_CMD="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_FILE"
 RESTART_SVC=false
 SYNC_BRANCH=false
 BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo shinshi)"
@@ -65,7 +71,7 @@ if $SYNC_BRANCH; then
   exit 0
 fi
 
-cleanup() { rm -rf "$TEMP_DIR"; }
+cleanup() { rm -rf "$TEMP_DIR" "$KNOWN_HOSTS_FILE"; }
 trap cleanup EXIT
 
 echo ":: deploy started at $(date '+%F %T')"
@@ -116,15 +122,15 @@ echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 
 if $RESTART_SVC; then
   echo ":: [2/4] stopping service..."
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
   sleep 1
 fi
 
 echo ":: [3/4] deploying binary & workspace (tar.gz pipe)..."
 # Single compressed transfer: binary + workspace in one shot (~4 MB instead of 13+)
-ssh "$TARGET" "mkdir -p $REMOTE_BIN/{config,contexts,workspace}"
+$SSH_CMD "$TARGET" "mkdir -p $REMOTE_BIN/{config,contexts,workspace}"
 tar -czf - -C "$(dirname "$BINARY")" aestival -C "$REPO_ROOT/workspace" . |
-  ssh "$TARGET" "
+  $SSH_CMD "$TARGET" "
     tar -xzf - -C $REMOTE_BIN &&
     mv $REMOTE_BIN/aestival $REMOTE_BIN/aestival.new
   "
@@ -137,7 +143,7 @@ echo ":: [4/4] config..."
 
 # Config — seed from template only if none exists on the server.
 # Never overwrite an existing config (contains secrets).
-ssh "$TARGET" "
+$SSH_CMD "$TARGET" "
   if [ ! -f '$REMOTE_BIN/config/bot_config.json' ]; then
     echo '   [seed] config/bot_config.json (first deploy — edit it!)'
   else
@@ -150,7 +156,7 @@ echo "   [keep] contexts/ (untouched)"
 
 # ── 4. finalise (atomic binary swap + optional restart) ──────────────────────
 
-ssh "$TARGET" "
+$SSH_CMD "$TARGET" "
   set -e
   mv '$REMOTE_BIN/aestival.new' '$REMOTE_BIN/aestival'
   echo ':: binary atomically replaced'
@@ -160,10 +166,10 @@ echo ":: deploy finished at $(date '+%F %T')"
 
 if $RESTART_SVC; then
   echo ":: starting aestival-bot.service..."
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user start aestival-bot.service" 2>&1
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user start aestival-bot.service" 2>&1
   echo ""
   echo ":: service status:"
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true
 else
   echo ""
   echo "  To restart:  ./deploy.sh --restart"

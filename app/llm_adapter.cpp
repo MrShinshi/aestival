@@ -22,6 +22,7 @@ static nlohmann::json build_messages_json(std::vector<client::chat_message> cons
 				j["tool_calls"] = nlohmann::json::parse(m.tool_calls_json);
 				j["content"] = nullptr;
 			} catch (...) {
+				client::log::warn("[llm_adapter] failed to parse tool_calls_json");
 			}
 		}
 		arr.push_back(std::move(j));

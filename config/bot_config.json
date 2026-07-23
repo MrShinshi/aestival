@@ -13,8 +13,8 @@
       "deepseek": {
         "api_key": "",
         "model": "deepseek-chat",
-        "user_token": "EWYgqUi4TeZPSjqNEZf0DqbDPOtVyq2esh71x/jyp9m3x35cv3ul4KYYKXuSv6tI",
-        "waf_cookie": "smidV2=20260703175545090c8d3ba0e4b999a286aa4580b96f5300c0fe7428ee4c100; .thumbcache_6b2e5483f9d858d7c661c5e276b6a6ae=IqiJ5fl7paO0FdnnqpWoXWfj0uz8wJZCX27Ny5tTy42I5meHULoAaiHBtaCSSMBJfPPbbJpDNu3Cx+Zm4QZ+hg%3D%3D"
+        "user_token": "YOUR_USER_TOKEN_HERE",
+        "waf_cookie": "YOUR_WAF_COOKIE_HERE"
       },
       "admins": [
         "793F1ADD1643A00C76554D258614EC83"

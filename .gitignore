@@ -28,3 +28,21 @@ node_modules/
 # webui build outputs
 webui/frontend/dist/
 webui/backend/dist/
+
+# environment / secrets
+.env
+.env.*
+
+# logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

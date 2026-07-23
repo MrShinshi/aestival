@@ -7,17 +7,29 @@
 
 import { Express, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { sanitizeAgentId } from './sanitize';
 
 const BOT_API = process.env.BOT_API_URL || 'http://127.0.0.1:9090';
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const PROXY_TIMEOUT_MS = 15_000;
 
+// ── JWT cache (avoid re-signing for every proxied request) ────────────────
+let cachedToken: string | null = null;
+let cachedTokenExpiry: number = 0;
+
 function botToken(): string {
-  return jwt.sign(
-    { sub: 'admin', iat: Math.floor(Date.now() / 1000) },
+  const now = Math.floor(Date.now() / 1000);
+  // Reuse token if it has at least 5 minutes of remaining validity
+  if (cachedToken && now < cachedTokenExpiry - 300) {
+    return cachedToken;
+  }
+  cachedToken = jwt.sign(
+    { sub: 'admin', iat: now },
     JWT_SECRET,
     { expiresIn: '1h', algorithm: 'HS256' }
   );
+  cachedTokenExpiry = now + 3600;
+  return cachedToken;
 }
 
 async function proxyToBot(method: string, path: string, body: unknown, token: string) {
@@ -45,6 +57,11 @@ async function proxyToBot(method: string, path: string, body: unknown, token: st
   }
 }
 
+function internalError(res: Response, err: any, detail: string) {
+  console.error(`[proxy] ${detail}:`, err);
+  res.status(502).json({ error: 'bot API unreachable' });
+}
+
 export function setupProxy(app: Express) {
   // ── Agents ──────────────────────────────────────────────────────────
   app.get('/api/ui/agents', async (_req, res) => {
@@ -52,7 +69,7 @@ export function setupProxy(app: Express) {
       const r = await proxyToBot('GET', '/api/v1/agents', null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, 'GET /agents');
     }
   });
 
@@ -61,39 +78,54 @@ export function setupProxy(app: Express) {
       const r = await proxyToBot('POST', '/api/v1/agents', req.body, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, 'POST /agents');
     }
   });
 
   app.delete('/api/ui/agents/:id', async (req, res) => {
+    const id = sanitizeAgentId(req.params.id);
+    if (id === '_invalid_') {
+      res.status(400).json({ error: 'invalid agent id' });
+      return;
+    }
     try {
-      const r = await proxyToBot('DELETE', `/api/v1/agents/${req.params.id}`, null, botToken());
+      const r = await proxyToBot('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`, null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, `DELETE /agents/${id}`);
     }
   });
 
   app.post('/api/ui/agents/:id/:action', async (req, res) => {
-    const { id, action } = req.params;
+    const { id: rawId, action } = req.params;
     if (action !== 'start' && action !== 'stop') {
       res.status(400).json({ error: 'invalid action' });
       return;
     }
+    const id = sanitizeAgentId(rawId);
+    if (id === '_invalid_') {
+      res.status(400).json({ error: 'invalid agent id' });
+      return;
+    }
     try {
-      const r = await proxyToBot('POST', `/api/v1/agents/${id}/${action}`, null, botToken());
+      const r = await proxyToBot('POST', `/api/v1/agents/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, null, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, `POST /agents/${id}/${action}`);
     }
   });
 
   app.put('/api/ui/agents/:id/config', async (req, res) => {
+    const id = sanitizeAgentId(req.params.id);
+    if (id === '_invalid_') {
+      res.status(400).json({ error: 'invalid agent id' });
+      return;
+    }
     try {
-      const r = await proxyToBot('PUT', `/api/v1/agents/${req.params.id}/config`, req.body, botToken());
+      const r = await proxyToBot('PUT', `/api/v1/agents/${encodeURIComponent(id)}/config`, req.body, botToken());
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, `PUT /agents/${id}/config`);
     }
   });
 
@@ -103,7 +135,7 @@ export function setupProxy(app: Express) {
       const r = await proxyToBot('GET', '/api/v1/health', null, '');
       res.status(r.status).json(r.data);
     } catch (err: any) {
-      res.status(502).json({ error: 'bot API unreachable', detail: err.message });
+      internalError(res, err, 'GET /status');
     }
   });
 }

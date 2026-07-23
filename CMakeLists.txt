@@ -283,7 +283,12 @@ if(AESTIVAL_WERROR)
         # -Wno-missing-field-initializers: C++20 aggregate init with omitted
         # tail fields is well-defined (value-initialized).  Not a bug.
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Werror -Wno-error=missing-field-initializers -Wno-error=maybe-uninitialized)
+            -Werror -Wno-error=missing-field-initializers)
+        # GCC-specific: Boost websocket optional cleanup triggers a false
+        # positive maybe-uninitialized inside Boost internals.
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${PROJECT_NAME} PRIVATE -Wno-error=maybe-uninitialized)
+        endif()
     endif()
 endif()
 

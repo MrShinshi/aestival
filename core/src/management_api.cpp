@@ -385,14 +385,20 @@ struct management_api::impl {
 	static std::string extract_id(std::string const& target, std::string const& suffix) {
 		static constexpr std::string_view k_prefix = "/api/v1/agents/";
 		auto id = target.substr(k_prefix.size(), target.size() - k_prefix.size() - suffix.size());
+		if (!is_valid_agent_id(id))
+			throw std::runtime_error("invalid agent id in URL: " + id);
 		return std::string(id);
 	}
 
 	static std::string extract_id_raw(std::string const& target) {
 		static constexpr std::string_view k_prefix = "/api/v1/agents/";
 		static constexpr std::string_view k_conv_prefix = "/api/v1/conversations/";
-		if (target.starts_with(k_prefix))
-			return std::string(target.substr(k_prefix.size()));
+		if (target.starts_with(k_prefix)) {
+			auto id = std::string(target.substr(k_prefix.size()));
+			if (!is_valid_agent_id(id))
+				throw std::runtime_error("invalid agent id in URL: " + id);
+			return id;
+		}
 		if (target.starts_with(k_conv_prefix))
 			return std::string(target.substr(k_conv_prefix.size()));
 		return {};

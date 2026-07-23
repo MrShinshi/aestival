@@ -175,6 +175,8 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+          cleanup_keys() { rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts; }
+          trap cleanup_keys EXIT
 
           # 1. stop service before overwriting binary (avoids ETXTBUSY)
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
@@ -196,7 +198,6 @@ jobs:
             systemctl --user start aestival-bot.service
           "
 
-          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
 
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS' && matrix.build_type == 'Release'
@@ -267,6 +268,8 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+          cleanup_keys() { rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts; }
+          trap cleanup_keys EXIT
 
           REMOTE="shinshi@122.51.129.97"
           REMOTE_DIR="/home/shinshi/aestival/webui"
@@ -299,5 +302,4 @@ jobs:
             systemctl --user --no-pager status aestival-webui.service || true
           "
 
-          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
           echo ":: Web UI deployed"

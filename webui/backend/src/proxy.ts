@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 
 const BOT_API = process.env.BOT_API_URL || 'http://127.0.0.1:9090';
 const JWT_SECRET = process.env.JWT_SECRET || '';
+const PROXY_TIMEOUT_MS = 15_000;
 
 function botToken(): string {
   return jwt.sign(
@@ -26,14 +27,22 @@ async function proxyToBot(method: string, path: string, body: unknown, token: st
     'Authorization': `Bearer ${token}`,
   };
 
-  const opts: RequestInit = { method, headers };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+
+  const opts: RequestInit = { method, headers, signal: controller.signal };
   if (body && method !== 'GET') {
     opts.body = JSON.stringify(body);
   }
 
-  const resp = await fetch(url, opts);
-  const data = await resp.json();
-  return { status: resp.status, data };
+  try {
+    const resp = await fetch(url, opts);
+    clearTimeout(timer);
+    const data = await resp.json();
+    return { status: resp.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function setupProxy(app: Express) {

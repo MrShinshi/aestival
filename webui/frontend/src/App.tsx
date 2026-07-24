@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './lib/auth';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
-import ProtectedRoute from './components/ProtectedRoute';
+import ProtectedRoute, { AdminRoute } from './components/ProtectedRoute';
 import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import AuthCallback from './pages/AuthCallback';
@@ -29,11 +29,15 @@ export default function App() {
               <Layout>
                 <ErrorBoundary>
                   <Routes>
+                    {/* Everyone can see dashboard and settings */}
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/agents" element={<Agents />} />
-                    <Route path="/conversations" element={<Conversations />} />
-                    <Route path="/logs" element={<Logs />} />
                     <Route path="/settings" element={<Settings />} />
+
+                    {/* Admin-only */}
+                    <Route path="/agents" element={<AdminRoute><Agents /></AdminRoute>} />
+                    <Route path="/conversations" element={<AdminRoute><Conversations /></AdminRoute>} />
+                    <Route path="/logs" element={<AdminRoute><Logs /></AdminRoute>} />
+
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </ErrorBoundary>

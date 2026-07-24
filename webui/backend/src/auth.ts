@@ -119,6 +119,23 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 }
 
+/**
+ * Require the authenticated user to be in the admin list.
+ * Must be used AFTER requireAuth — depends on req.user being set.
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const user = (req as any).user as SessionUser | undefined;
+  if (!user) {
+    res.status(401).json({ error: 'authentication required' });
+    return;
+  }
+  if (!config.adminUsers.has(user.username)) {
+    res.status(403).json({ error: 'admin access required' });
+    return;
+  }
+  next();
+}
+
 // ── Route setup ────────────────────────────────────────────────────────────
 
 export function setupAuth(app: Express): void {
@@ -146,6 +163,7 @@ export function setupAuth(app: Express): void {
 
       const linkedAccounts = getLinkedAccounts(payload.sub);
       const userHasPassword = hasPassword(payload.sub);
+      const isAdmin = config.adminUsers.has(payload.username);
 
       res.json({
         authenticated: true,
@@ -153,6 +171,7 @@ export function setupAuth(app: Express): void {
           id: payload.sub,
           username: payload.username,
           avatar_url: payload.avatar_url,
+          is_admin: isAdmin,
         },
         linked_accounts: linkedAccounts.map((a) => ({
           id: a.id,
@@ -187,6 +206,10 @@ export function setupAuth(app: Express): void {
    * immediately after registration.
    */
   app.post('/api/ui/auth/register', async (req: Request, res: Response) => {
+    if (!config.registrationOpen) {
+      res.status(403).json({ error: '注册已关闭' });
+      return;
+    }
     const { username, password } = req.body || {};
 
     const nameErr = validateUsername(username);

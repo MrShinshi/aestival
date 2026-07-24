@@ -15,6 +15,7 @@ export interface AuthUser {
   id: string;
   username: string;
   avatar_url: string;
+  is_admin?: boolean;
 }
 
 export interface LinkedAccount {
@@ -28,6 +29,7 @@ interface AuthState {
   user: AuthUser | null;
   linkedAccounts: LinkedAccount[];
   hasPassword: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (provider: 'github' | 'qq') => void;
@@ -43,6 +45,7 @@ const AuthContext = createContext<AuthState>({
   user: null,
   linkedAccounts: [],
   hasPassword: false,
+  isAdmin: false,
   isLoading: true,
   isAuthenticated: false,
   login: () => {},
@@ -62,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [hasPassword, setHasPassword] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -75,10 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(data.user);
           setLinkedAccounts(data.linked_accounts || []);
           setHasPassword(data.has_password || false);
+          setIsAdmin(data.user?.is_admin || false);
         } else {
           setUser(null);
           setLinkedAccounts([]);
           setHasPassword(false);
+          setIsAdmin(false);
         }
       }
     } catch {
@@ -145,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         linkedAccounts,
         hasPassword,
+        isAdmin,
         isLoading,
         isAuthenticated: !!user,
         login,

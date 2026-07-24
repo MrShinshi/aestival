@@ -16,7 +16,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
-import { setupAuth, requireAuth } from './auth';
+import { setupAuth, requireAuth, requireAdmin } from './auth';
 import { setupGithubAuth } from './oauth_github';
 import { setupQQAuth } from './oauth_qq';
 import { setupProxy } from './proxy';
@@ -49,9 +49,14 @@ app.get('/api/ui/health', (_req, res) => {
 });
 
 // ── Protected routes (JWT session cookie required) ─────────────────────────
-app.use('/api/ui/agents', requireAuth);
-app.use('/api/ui/conversations', requireAuth);
-app.use('/api/ui/logs', requireAuth);
+//
+// Administration endpoints — login required AND admin username.
+// Regular users are 403'd from agents, conversations, and logs.
+app.use('/api/ui/agents', requireAuth, requireAdmin);
+app.use('/api/ui/conversations', requireAuth, requireAdmin);
+app.use('/api/ui/logs', requireAuth, requireAdmin);
+
+// Status is read-only health info — any authenticated user can see it.
 app.use('/api/ui/status', requireAuth);
 
 setupProxy(app);

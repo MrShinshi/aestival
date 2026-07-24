@@ -1,5 +1,8 @@
 /**
- * Route guard — redirects to /login when the user is not authenticated.
+ * Route guards.
+ *
+ * ProtectedRoute  — redirects to /login when not authenticated.
+ * AdminRoute      — checks isAdmin after authentication; redirects to / if not admin.
  */
 
 import { Navigate } from 'react-router-dom';
@@ -22,6 +25,24 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+export function AdminRoute({ children }: { children: ReactNode }) {
+  const { isAdmin, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0f0d1e]">
+        <p className="text-gray-400 text-sm">加载中…</p>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

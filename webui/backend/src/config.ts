@@ -44,6 +44,14 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
+function parseAdminUsers(): Set<string> {
+  const raw = (process.env.ADMIN_USERS || process.env.AUTH_ADMIN_USER || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  return new Set(raw);
+}
+
 export const config = {
   jwtSecret: process.env.JWT_SECRET || '',
   port: parseInt(process.env.PORT || '3000', 10),
@@ -82,4 +90,13 @@ export const config = {
   // OAuth user on startup.  Set both to enable.
   adminUser: process.env.AUTH_ADMIN_USER || '',
   adminPass: process.env.AUTH_ADMIN_PASS || '',
+
+  // Comma-separated list of usernames allowed to manage agents / view
+  // conversations and logs.  Defaults to the AUTH_ADMIN_USER so that
+  // existing deployments don't need an extra env var.
+  adminUsers: parseAdminUsers(),
+
+  // When true, registration is open to anyone.  Set to false once your
+  // admin accounts exist — new users can only be added via OAuth.
+  registrationOpen: process.env.REGISTRATION_OPEN !== 'false',
 };

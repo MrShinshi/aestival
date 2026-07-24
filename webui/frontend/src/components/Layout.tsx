@@ -8,21 +8,31 @@ import {
   Settings,
   LogOut,
   User,
+  Shield,
   Github,
 } from 'lucide-react';
 import { APP_VERSION } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-const navItems = [
+interface NavItem {
+  to: string;
+  label: string;
+  Icon: React.ComponentType<{ size?: number; 'aria-hidden'?: boolean }>;
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { to: '/', label: '仪表盘', Icon: LayoutDashboard },
-  { to: '/agents', label: 'Agent', Icon: Bot },
-  { to: '/conversations', label: '对话', Icon: MessageSquare },
-  { to: '/logs', label: '日志', Icon: FileText },
+  { to: '/agents', label: 'Agent', Icon: Bot, adminOnly: true },
+  { to: '/conversations', label: '对话', Icon: MessageSquare, adminOnly: true },
+  { to: '/logs', label: '日志', Icon: FileText, adminOnly: true },
   { to: '/settings', label: '设置', Icon: Settings },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, linkedAccounts, logout } = useAuth();
+  const { user, linkedAccounts, isAdmin, logout } = useAuth();
+
+  const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <div className="flex h-screen">
@@ -38,7 +48,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-2 space-y-0.5">
-          {navItems.map(({ to, label, Icon }) => (
+          {visibleItems.map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -51,7 +61,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 }`
               }
             >
-              <Icon size={16} aria-hidden="true" />
+              <Icon size={16} aria-hidden={true} />
               {label}
             </NavLink>
           ))}
@@ -71,9 +81,16 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <User size={16} className="text-gray-400" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-300 truncate">
-                  {user.username}
-                </p>
+                <div className="flex items-center gap-1">
+                  <p className="text-sm text-gray-300 truncate">
+                    {user.username}
+                  </p>
+                  {isAdmin && (
+                    <span title="管理员" className="text-indigo-400">
+                      <Shield size={12} aria-hidden={true} />
+                    </span>
+                  )}
+                </div>
                 {/* Platform badges */}
                 <div className="flex gap-1 mt-0.5">
                   {linkedAccounts.some((a) => a.provider === 'github') && (
@@ -83,7 +100,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   )}
                   {linkedAccounts.some((a) => a.provider === 'qq') && (
                     <span className="text-xs text-gray-500" title="已绑定 QQ">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden={true}>
                         <path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.567 1.41.724.706 1.645.73 1.645.73h.083c.294 0 .56-.037.793-.09-.035.174-.055.352-.055.537 0 1.193.942 2.693 2.398 2.971.194.037.392.058.595.058.624 0 1.226-.174 1.666-.466.37.21.846.349 1.358.376h.002c.512-.027.988-.166 1.358-.376.44.292 1.042.466 1.666.466.203 0 .4-.02.595-.058 1.456-.278 2.398-1.778 2.398-2.97 0-.186-.02-.364-.055-.538.233.053.499.09.793.09h.083s.921-.024 1.645-.73c.397-.385.567-.745.567-1.41 0-2.514-2.163-6.954-2.163-6.954V9.325C18.293 3.364 14.268 2 12.003 2z" />
                       </svg>
                     </span>

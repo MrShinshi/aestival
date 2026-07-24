@@ -18,6 +18,7 @@ jobs:
     outputs:
       cpp: ${{ steps.filter.outputs.cpp }}
       webui: ${{ steps.filter.outputs.webui }}
+      backend_deps: ${{ steps.filter.outputs.backend_deps }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +29,7 @@ jobs:
         uses: dorny/paths-filter@v3
         id: filter
         with:
-          # Default quantifier: 'some' — a filter is 'true' when at least one
-          # changed file matches its patterns.  This is the safe default:
+          # A filter is 'true' when at least one changed file matches its patterns.
           #   - only webui changes → cpp='false' → C++ skipped
           #   - only C++ changes   → webui='false' → webui skipped
           #   - ci.yml changed     → both run (always safe to test CI changes)
@@ -46,6 +46,8 @@ jobs:
             webui:
               - 'webui/**'
               - '.github/workflows/ci.yml'
+            backend_deps:
+              - 'webui/backend/package-lock.json'
 
   # ─── C++ builds (full matrix, selective on push, always on PR) ───────────
   cpp-build:
@@ -308,7 +310,12 @@ jobs:
           (cd webui/frontend && npx tsc --noEmit && npm run build) &
           wait
 
-      # ── Deploy ─────────────────────────────────────────────────────────
+      # ── Deploy (single tar pipe, single SSH call) ──────────────────────
+      #
+      # Always sends: backend/dist + backend/package.json + frontend/dist
+      #               (~500 KB compressed — practically instant).
+      # Only sends backend/node_modules when package-lock.json changed
+      #               (saves ~100 MB / ~25 MB compressed on every regular deploy).
       - name: Deploy Web UI to server
         run: |
           mkdir -p ~/.ssh
@@ -320,36 +327,39 @@ jobs:
 
           REMOTE="shinshi@122.51.129.97"
           REMOTE_DIR="/home/shinshi/aestival/webui"
-          FRONTEND_HTML="/home/shinshi/aestival/webui/frontend"
 
-          ssh -i ~/.ssh/deploy_key "$REMOTE" "mkdir -p $REMOTE_DIR/backend $FRONTEND_HTML"
+          # Assemble staging directory + single tar → single SSH pipe.
+          STAGING="$RUNNER_TEMP/deploy"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING/backend" "$STAGING/frontend/dist"
+          cp -a webui/backend/dist   "$STAGING/backend/"
+          cp    webui/backend/package.json "$STAGING/backend/"
+          cp -a webui/frontend/dist/* "$STAGING/frontend/dist/"
 
-          # 1. Deploy backend
-          echo ":: deploying backend..."
-          ssh -i ~/.ssh/deploy_key "$REMOTE" "
-            rm -rf '$REMOTE_DIR/backend/dist' '$REMOTE_DIR/backend/node_modules.old' 2>/dev/null || true
-          "
-          cd webui/backend
-          tar -czf "$RUNNER_TEMP/webui-backend.tar.gz" dist/ package.json node_modules/
-          cd ../..
-          cat "$RUNNER_TEMP/webui-backend.tar.gz" |
-            ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $REMOTE_DIR/backend"
+          DEPS="${{ needs.changes.outputs.backend_deps }}"
+          echo ":: backend deps changed: ${DEPS:-false}"
+          SEND_DEPS=false
+          if [ "$DEPS" = "true" ]; then
+            echo "   including node_modules (~100 MB, deps changed)"
+            cp -a webui/backend/node_modules "$STAGING/backend/"
+            echo "   done copying"
+            SEND_DEPS=true
+          fi
 
-          # 2. Deploy frontend (static files)
-          echo ":: deploying frontend..."
-          ssh -i ~/.ssh/deploy_key "$REMOTE" "rm -rf '$FRONTEND_HTML/'* 2>/dev/null || true"
-          cd webui/frontend
-          tar -czf "$RUNNER_TEMP/webui-frontend.tar.gz" dist/
-          cd ../..
-          cat "$RUNNER_TEMP/webui-frontend.tar.gz" |
-            ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $FRONTEND_HTML"
-
-          # 3. Restart Web UI backend service
-          echo ":: restarting webui service..."
-          ssh -i ~/.ssh/deploy_key "$REMOTE" "
-            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-            systemctl --user restart aestival-webui.service || true
-            systemctl --user --no-pager status aestival-webui.service || true
-          "
+          echo ":: deploying..."
+          tar -czf - -C "$STAGING" backend frontend |
+            ssh -i ~/.ssh/deploy_key "$REMOTE" "
+              set -e
+              rm -rf '$REMOTE_DIR/backend/dist'
+              rm -rf '$REMOTE_DIR/frontend/'*
+              if $SEND_DEPS; then
+                rm -rf '$REMOTE_DIR/backend/node_modules'
+              fi
+              mkdir -p '$REMOTE_DIR/backend' '$REMOTE_DIR/frontend'
+              tar -xzf - -C '$REMOTE_DIR'
+              export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+              systemctl --user restart aestival-webui.service || true
+              systemctl --user --no-pager status aestival-webui.service || true
+            "
 
           echo ":: Web UI deployed"

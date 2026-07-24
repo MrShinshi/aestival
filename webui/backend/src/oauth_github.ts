@@ -85,20 +85,20 @@ export function setupGithubAuth(app: Express): void {
 
     // 1. Verify state token
     if (!state || typeof state !== 'string') {
-      res.redirect(`${config.frontendUrl}/auth/callback?error=invalid_state`);
+      res.redirect(`/auth/callback?error=invalid_state`);
       return;
     }
 
     const stateData = verifyState(state);
     if (!stateData) {
-      res.redirect(`${config.frontendUrl}/auth/callback?error=invalid_state`);
+      res.redirect(`/auth/callback?error=invalid_state`);
       return;
     }
 
     // 2. Verify code is present
     if (!code || typeof code !== 'string') {
       res.redirect(
-        `${config.frontendUrl}/auth/callback?error=no_code&provider=github`,
+        `/auth/callback?error=no_code&provider=github`,
       );
       return;
     }
@@ -122,7 +122,7 @@ export function setupGithubAuth(app: Express): void {
       if (!tokenResp.ok) {
         const errBody = await tokenResp.text();
         console.error('[github] token exchange failed:', tokenResp.status, errBody);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=token_exchange&provider=github`);
+        res.redirect(`/auth/callback?error=token_exchange&provider=github`);
         return;
       }
 
@@ -130,7 +130,7 @@ export function setupGithubAuth(app: Express): void {
       const accessToken = tokenData.access_token;
       if (!accessToken) {
         console.error('[github] no access_token in response:', JSON.stringify(tokenData));
-        res.redirect(`${config.frontendUrl}/auth/callback?error=token_exchange&provider=github`);
+        res.redirect(`/auth/callback?error=token_exchange&provider=github`);
         return;
       }
 
@@ -145,7 +145,7 @@ export function setupGithubAuth(app: Express): void {
 
       if (!userResp.ok) {
         console.error('[github] user fetch failed:', userResp.status);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=user_fetch&provider=github`);
+        res.redirect(`/auth/callback?error=user_fetch&provider=github`);
         return;
       }
 
@@ -173,7 +173,7 @@ export function setupGithubAuth(app: Express): void {
           sourceUserId: result.conflict.existingUser.id,
           sourceUsername: result.conflict.existingUser.username,
         });
-        res.redirect(`${config.frontendUrl}/auth/callback?${params.toString()}`);
+        res.redirect(`/auth/callback?${params.toString()}`);
         return;
       }
 
@@ -183,11 +183,11 @@ export function setupGithubAuth(app: Express): void {
 
       const redirect = stateData.redirect || '/';
       res.redirect(
-        `${config.frontendUrl}/auth/callback?login=success&redirect=${encodeURIComponent(redirect)}`,
+        `/auth/callback?login=success&redirect=${encodeURIComponent(redirect)}`,
       );
     } catch (err: any) {
       console.error('[github] unexpected error:', err);
-      res.redirect(`${config.frontendUrl}/auth/callback?error=server_error&provider=github`);
+      res.redirect(`/auth/callback?error=server_error&provider=github`);
     }
   });
 }

@@ -99,19 +99,19 @@ export function setupQQAuth(app: Express): void {
 
     // 1. Verify state token
     if (!state || typeof state !== 'string') {
-      res.redirect(`${config.frontendUrl}/auth/callback?error=invalid_state`);
+      res.redirect(`/auth/callback?error=invalid_state`);
       return;
     }
 
     const stateData = verifyState(state);
     if (!stateData) {
-      res.redirect(`${config.frontendUrl}/auth/callback?error=invalid_state`);
+      res.redirect(`/auth/callback?error=invalid_state`);
       return;
     }
 
     if (!code || typeof code !== 'string') {
       res.redirect(
-        `${config.frontendUrl}/auth/callback?error=no_code&provider=qq`,
+        `/auth/callback?error=no_code&provider=qq`,
       );
       return;
     }
@@ -132,7 +132,7 @@ export function setupQQAuth(app: Express): void {
 
       if (!tokenResp.ok) {
         console.error('[qq] token exchange failed:', tokenResp.status);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=token_exchange&provider=qq`);
+        res.redirect(`/auth/callback?error=token_exchange&provider=qq`);
         return;
       }
 
@@ -146,7 +146,7 @@ export function setupQQAuth(app: Express): void {
         const json = JSON.parse(tokenText);
         if (json.error) {
           console.error('[qq] token error:', json.error, json.error_description);
-          res.redirect(`${config.frontendUrl}/auth/callback?error=token_exchange&provider=qq`);
+          res.redirect(`/auth/callback?error=token_exchange&provider=qq`);
           return;
         }
         accessToken = json.access_token;
@@ -162,7 +162,7 @@ export function setupQQAuth(app: Express): void {
 
       if (!accessToken) {
         console.error('[qq] no access_token in response:', tokenText);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=token_exchange&provider=qq`);
+        res.redirect(`/auth/callback?error=token_exchange&provider=qq`);
         return;
       }
 
@@ -173,7 +173,7 @@ export function setupQQAuth(app: Express): void {
 
       if (!openidResp.ok) {
         console.error('[qq] openid fetch failed:', openidResp.status);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=user_fetch&provider=qq`);
+        res.redirect(`/auth/callback?error=user_fetch&provider=qq`);
         return;
       }
 
@@ -192,7 +192,7 @@ export function setupQQAuth(app: Express): void {
 
       if (!openid) {
         console.error('[qq] no openid in response:', openidText);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=user_fetch&provider=qq`);
+        res.redirect(`/auth/callback?error=user_fetch&provider=qq`);
         return;
       }
 
@@ -207,7 +207,7 @@ export function setupQQAuth(app: Express): void {
 
       if (!userResp.ok) {
         console.error('[qq] user info fetch failed:', userResp.status);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=user_fetch&provider=qq`);
+        res.redirect(`/auth/callback?error=user_fetch&provider=qq`);
         return;
       }
 
@@ -220,7 +220,7 @@ export function setupQQAuth(app: Express): void {
       };
       if (userData.ret !== 0) {
         console.error('[qq] user info error:', userData.ret, userData.msg);
-        res.redirect(`${config.frontendUrl}/auth/callback?error=user_fetch&provider=qq`);
+        res.redirect(`/auth/callback?error=user_fetch&provider=qq`);
         return;
       }
 
@@ -252,7 +252,7 @@ export function setupQQAuth(app: Express): void {
           sourceUserId: result.conflict.existingUser.id,
           sourceUsername: result.conflict.existingUser.username,
         });
-        res.redirect(`${config.frontendUrl}/auth/callback?${params.toString()}`);
+        res.redirect(`/auth/callback?${params.toString()}`);
         return;
       }
 
@@ -262,11 +262,11 @@ export function setupQQAuth(app: Express): void {
 
       const redirect = stateData.redirect || '/';
       res.redirect(
-        `${config.frontendUrl}/auth/callback?login=success&redirect=${encodeURIComponent(redirect)}`,
+        `/auth/callback?login=success&redirect=${encodeURIComponent(redirect)}`,
       );
     } catch (err: any) {
       console.error('[qq] unexpected error:', err);
-      res.redirect(`${config.frontendUrl}/auth/callback?error=server_error&provider=qq`);
+      res.redirect(`/auth/callback?error=server_error&provider=qq`);
     }
   });
 }

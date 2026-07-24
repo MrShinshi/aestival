@@ -55,21 +55,19 @@ function sha256(message: Uint8Array): Uint8Array {
 
   // Pre-processing — pad the message
   const msgBitLen = message.length * 8;
-  const padLen = (() => {
-    // k ≡ 448 - (msgBitLen + 1) (mod 512), with 0 ≤ k < 512
-    let k = 448 - (msgBitLen + 1);
-    while (k < 0) k += 512;
-    return k;
-  })();
-  const totalLen = message.length + 1 + padLen / 8 + 8; // 8 bytes for length
+  // Number of zero bytes needed after the 0x80 sentinel so that
+  // (msgLen + 1 + zeroBytes) % 64 ≡ 56  (because 56 × 8 = 448).
+  let zeroBytes = 56 - ((message.length + 1) % 64);
+  if (zeroBytes < 0) zeroBytes += 64;
+  const totalLen = message.length + 1 + zeroBytes + 8;
   const padded = new Uint8Array(totalLen);
   padded.set(message);
   padded[message.length] = 0x80; // append '1' bit + 7 zero bits
-  // Append 64-bit big-endian length (JavaScript numbers are only 53-bit safe,
-  // but our messages are always short).
+  // Append 64-bit big-endian length.  Our messages are short (< 512 MiB),
+  // so the upper 32 bits are always 0.
   const view = new DataView(padded.buffer);
-  view.setUint32(totalLen - 4, msgBitLen >>> 0, false); // upper 32 bits → 0
-  view.setUint32(totalLen - 8, msgBitLen >>> 0, false); // lower 32 bits
+  view.setUint32(totalLen - 4, msgBitLen, false);       // lower 32 bits
+  view.setUint32(totalLen - 8, 0, false);               // upper 32 bits = 0
 
   // Process each 512-bit (64-byte) chunk
   for (let off = 0; off < padded.length; off += 64) {

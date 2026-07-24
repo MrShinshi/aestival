@@ -46,31 +46,19 @@ export default function AuthCallback() {
     const code = searchParams.get('code')!;
     const state = searchParams.get('state')!;
 
-    // Verify state matches what we sent
-    const storedState = sessionStorage.getItem('github_state');
-    if (!storedState || storedState !== state) {
-      navigate('/auth/callback?error=invalid_state&provider=github', { replace: true });
-      return;
-    }
-
-    const codeVerifier = sessionStorage.getItem('github_code_verifier');
-    sessionStorage.removeItem('github_code_verifier');
-    sessionStorage.removeItem('github_state');
-    sessionStorage.removeItem('github_client_id');
-    sessionStorage.removeItem('github_redirect_uri');
+    // State is verified by the server in /token (JWT signature check).
+    // No client-side sessionStorage needed — LoginPage is a plain <a>
+    // tag now; the server generates and validates the state token.
 
     async function doExchange() {
       try {
         // Server handles ALL GitHub API calls.
         // Browser only talks to our server → no GFW issues.
-        const body: Record<string, string> = { code, state };
-        if (codeVerifier) body.code_verifier = codeVerifier;
-
         const resp = await fetch('/api/ui/auth/github/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(body),
+          body: JSON.stringify({ code, state }),
         });
 
         if (!resp.ok) {

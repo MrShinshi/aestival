@@ -218,7 +218,7 @@ jobs:
   webui:
     name: Web UI · build & deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     # No 'needs' — web UI has zero dependency on C++ builds.
     if: github.event_name == 'push' && github.ref_name == 'shinshi'
 

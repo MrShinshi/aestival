@@ -19,53 +19,50 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
 
-    # PRs always run the full matrix (safety net before merge).
-    # On branch pushes we skip unaffected jobs to save CI minutes.
     outputs:
-      cpp: ${{ steps.filter.outputs.cpp }}
-      webui: ${{ steps.filter.outputs.webui }}
-      backend_deps: ${{ steps.filter.outputs.backend_deps }}
-      cpp_matrix: ${{ steps.matrix.outputs.json }}
+      cpp: ${{ steps.detect.outputs.cpp }}
+      webui: ${{ steps.detect.outputs.webui }}
+      backend_deps: ${{ steps.detect.outputs.backend_deps }}
+      cpp_matrix: ${{ steps.detect.outputs.cpp_matrix }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed so dorny/paths-filter can diff against parent commit
+          fetch-depth: 0  # we need the 'before' commit for git diff
 
-      - name: Filter paths
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          # A filter is 'true' when at least one changed file matches its patterns.
-          #   - only webui/** changes  → cpp='false', webui='true'
-          #   - only C++ changes       → cpp='true',  webui='false'
-          #   - ci.yml changes         → neither triggered (CI config ≠ app code)
-          #   - PRs bypass filters entirely (safety net before merge)
-          filters: |
-            cpp:
-              - 'app/**'
-              - 'core/**'
-              - 'platform/**'
-              - 'CMakeLists.txt'
-              - 'vcpkg.json'
-              - 'cmake/**'
-            webui:
-              - 'webui/**'
-            backend_deps:
-              - 'webui/backend/package-lock.json'
-
-      - name: Build matrix
-        id: matrix
+      - name: Detect
+        id: detect
         shell: bash
         run: |
-          # PRs run the full matrix (MSVC Debug + ClangCL extras) as a safety net.
-          # Pushes run a slim matrix — fewer Windows configs means faster feedback.
-          # GITHUB_OUTPUT doesn't support multi-line values — write compact JSON.
+          MATRIX_PR='{"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Debug"},{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"windows-latest","compiler":"clang-cl","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}'
+          MATRIX_PUSH='{"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}'
+
+          # PR: always run everything.
           if [ '${{ github.event_name }}' = 'pull_request' ]; then
-            echo 'json={"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Debug"},{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"windows-latest","compiler":"clang-cl","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}' >> "$GITHUB_OUTPUT"
-          else
-            echo 'json={"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}' >> "$GITHUB_OUTPUT"
+            echo "cpp=true"           >> "$GITHUB_OUTPUT"
+            echo "webui=true"         >> "$GITHUB_OUTPUT"
+            echo "backend_deps=true"  >> "$GITHUB_OUTPUT"
+            echo "cpp_matrix=$MATRIX_PR" >> "$GITHUB_OUTPUT"
+            echo ':: PR — running full matrix'
+            exit 0
           fi
+
+          # Push: diff the pushed commits to see what actually changed.
+          CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
+          echo ':: changed files:'
+          echo "$CHANGED" | sed 's/^/  /'
+
+          has() { echo "$CHANGED" | grep -qE "$1" && echo true || echo false; }
+
+          cpp=$(has '^(app|core|platform)/|^CMakeLists\.txt$|^vcpkg\.json$|^cmake/')
+          webui=$(has '^webui/')
+          deps=$(has '^webui/backend/package-lock\.json$')
+
+          echo ":: cpp=$cpp  webui=$webui  deps=$deps"
+          echo "cpp=${cpp}"                   >> "$GITHUB_OUTPUT"
+          echo "webui=${webui}"               >> "$GITHUB_OUTPUT"
+          echo "backend_deps=${deps}"         >> "$GITHUB_OUTPUT"
+          echo "cpp_matrix=$MATRIX_PUSH"      >> "$GITHUB_OUTPUT"
 
   # ─── C++ builds (full matrix, selective on push, always on PR) ───────────
   cpp-build:
@@ -359,6 +356,8 @@ jobs:
           if [ "${{ needs.changes.outputs.backend_deps }}" = "true" ]; then
             echo "   including node_modules (~100 MB)"
             cp -a webui/backend/node_modules "$STG/backend/"
+          else
+            echo "   skipping node_modules"
           fi
 
           echo ":: deploying ($(du -sh "$STG" | cut -f1))..."

@@ -61,9 +61,14 @@ export const config = {
   authDbPath: process.env.AUTH_DB_PATH || path.resolve(__dirname, '..', 'data', 'auth.db'),
 
   // GitHub OAuth
+  // GITHUB_CALLBACK_URL is the legacy name (used by the previous passport-based
+  // OAuth).  GITHUB_REDIRECT_URI is the preferred name for new deployments.
   githubClientId: process.env.GITHUB_CLIENT_ID || '',
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
-  githubRedirectUri: process.env.GITHUB_REDIRECT_URI || '',
+  githubRedirectUri:
+    process.env.GITHUB_REDIRECT_URI ||
+    process.env.GITHUB_CALLBACK_URL ||
+    '',
 
   // QQ OAuth (QQ互联)
   qqAppId: process.env.QQ_APP_ID || '',

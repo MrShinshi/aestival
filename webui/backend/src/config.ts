@@ -75,6 +75,9 @@ export const config = {
   qqAppSecret: process.env.QQ_APP_SECRET || '',
   qqRedirectUri: process.env.QQ_REDIRECT_URI || '',
 
+  // Cookie security — only enable Secure when behind HTTPS reverse proxy.
+  cookieSecure: process.env.COOKIE_SECURE === 'true',
+
   // Admin credential preset — automatically binds a password to an existing
   // OAuth user on startup.  Set both to enable.
   adminUser: process.env.AUTH_ADMIN_USER || '',

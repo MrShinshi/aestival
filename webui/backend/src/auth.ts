@@ -82,7 +82,7 @@ export function signSession(user: { id: string; username: string; avatar_url: st
 export function setAuthCookie(res: Response, token: string): void {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: config.cookieSecure,
     sameSite: 'strict',
     path: '/',
     maxAge: SESSION_MAX_AGE_MS,

@@ -1,25 +1,23 @@
 /**
  * Post-OAuth redirect handler.
  *
- * GitHub (PKCE flow):
+ * The server handles ALL GitHub API calls (token exchange + user profile).
+ * The browser only talks to our own server — no direct GitHub API access
+ * needed, which avoids GFW issues.
+ *
+ * Flow:
  *   1. Read code + state from URL params
  *   2. Read code_verifier from sessionStorage
- *   3. POST to GitHub /access_token (browser can reach GitHub; PKCE)
- *   4. GET GitHub /user with access_token
- *   5. POST verified identity to /api/ui/auth/github/exchange
- *   6. Handle success / conflict
+ *   3. POST {code, state, code_verifier} to /api/ui/auth/github/token
+ *   4. Handle success / conflict
  *
  * QQ:
  *   The backend handles the entire server-side OAuth flow.
- *   This page is reached via 302 from the backend callbacks.
  */
 
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-
-const GITHUB_TOKEN = 'https://github.com/login/oauth/access_token';
-const GITHUB_USER = 'https://api.github.com/user';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -36,13 +34,11 @@ export default function AuthCallback() {
   const didRun = useRef(false);
 
   const error = searchParams.get('error');
-  const provider = searchParams.get('provider') || 'github';
   const loginSuccess = searchParams.get('login') === 'success';
   const redirect = searchParams.get('redirect') || '/';
 
-  // ── GitHub PKCE exchange (runs once on mount) ──────────────────────────
+  // ── GitHub exchange (runs once on mount) ────────────────────────────────
   useEffect(() => {
-    // Don't run if already handled or if this is a QQ/error/success redirect
     if (didRun.current) return;
     if (error || loginSuccess || !searchParams.get('code')) return;
     didRun.current = true;
@@ -53,107 +49,63 @@ export default function AuthCallback() {
     // Verify state matches what we sent
     const storedState = sessionStorage.getItem('github_state');
     if (!storedState || storedState !== state) {
-      navigate('/auth/callback?error=invalid_state', { replace: true });
+      navigate('/auth/callback?error=invalid_state&provider=github', { replace: true });
       return;
     }
 
     const codeVerifier = sessionStorage.getItem('github_code_verifier');
-    const clientId = sessionStorage.getItem('github_client_id');
-    const redirectUri = sessionStorage.getItem('github_redirect_uri');
     sessionStorage.removeItem('github_code_verifier');
     sessionStorage.removeItem('github_state');
     sessionStorage.removeItem('github_client_id');
     sessionStorage.removeItem('github_redirect_uri');
 
-    if (!codeVerifier || !clientId || !redirectUri) {
-      navigate('/auth/callback?error=no_verifier&provider=github', { replace: true });
-      return;
-    }
-
-    async function pkceExchange() {
+    async function doExchange() {
       try {
-        // 1. Exchange code for access_token (browser can reach GitHub)
-        const tokenResp = await fetch(GITHUB_TOKEN, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            client_id: clientId,
-            code,
-            redirect_uri: redirectUri,
-            code_verifier: codeVerifier,
-          }),
-        });
+        // Server handles ALL GitHub API calls.
+        // Browser only talks to our server → no GFW issues.
+        const body: Record<string, string> = { code, state };
+        if (codeVerifier) body.code_verifier = codeVerifier;
 
-        if (!tokenResp.ok) {
-          navigate('/auth/callback?error=token_exchange&provider=github', { replace: true });
-          return;
-        }
-
-        const tokenData = await tokenResp.json();
-        const accessToken = tokenData.access_token;
-        if (!accessToken) {
-          navigate('/auth/callback?error=token_exchange&provider=github', { replace: true });
-          return;
-        }
-
-        // 2. Fetch user profile
-        const userResp = await fetch(GITHUB_USER, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: 'application/json',
-          },
-        });
-
-        if (!userResp.ok) {
-          navigate('/auth/callback?error=user_fetch&provider=github', { replace: true });
-          return;
-        }
-
-        const userData = await userResp.json();
-
-        // 3. POST verified identity to our backend
-        const exchangeResp = await fetch('/api/ui/auth/github/exchange', {
+        const resp = await fetch('/api/ui/auth/github/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            providerUserId: String(userData.id),
-            username: userData.login,
-            avatarUrl: userData.avatar_url || '',
-            state: state,
-          }),
+          body: JSON.stringify(body),
         });
 
-        if (!exchangeResp.ok) {
-          navigate('/auth/callback?error=server_error&provider=github', { replace: true });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          const errMsg = (data.error || '').toLowerCase();
+          if (errMsg.includes('state')) {
+            navigate('/auth/callback?error=invalid_state&provider=github', { replace: true });
+          } else {
+            navigate('/auth/callback?error=server_error&provider=github', { replace: true });
+          }
           return;
         }
 
-        const exchangeData = await exchangeResp.json();
+        const data = await resp.json();
 
         // Conflict — show merge UI
-        if (exchangeData.conflict) {
+        if (data.conflict) {
           setConflict({
-            targetUserId: exchangeData.targetUserId,
-            targetUsername: exchangeData.targetUsername,
-            sourceUserId: exchangeData.sourceUserId,
-            sourceUsername: exchangeData.sourceUsername,
+            targetUserId: data.targetUserId,
+            targetUsername: data.targetUsername,
+            sourceUserId: data.sourceUserId,
+            sourceUsername: data.sourceUsername,
           });
           return;
         }
 
         // Success
         await refresh();
-        navigate(exchangeData.redirect || '/', { replace: true });
+        navigate(data.redirect || '/', { replace: true });
       } catch {
         navigate('/auth/callback?error=server_error&provider=github', { replace: true });
       }
     }
 
-    pkceExchange();
+    doExchange();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Server-side OAuth success (QQ) ────────────────────────────────────
@@ -202,7 +154,7 @@ export default function AuthCallback() {
         <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-lg p-6">
           <h2 className="text-lg font-semibold text-gray-200 mb-4">账号冲突</h2>
           <p className="text-sm text-gray-400 mb-2">
-            此{provider === 'github' ? 'GitHub' : 'QQ'}账号已绑定到另一个账户。
+            此 GitHub 账号已绑定到另一个账户。
           </p>
           <div className="bg-gray-800 rounded p-4 mb-4 space-y-2">
             <div className="flex justify-between text-sm">

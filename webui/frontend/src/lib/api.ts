@@ -65,7 +65,9 @@ export interface LogResult {
 }
 
 export interface ConversationSummary {
+  agent_id: string;
   convo_id: string;
+  convo_type: string;
   message_count: number;
   first_at: string;
   last_at: string;
@@ -73,7 +75,9 @@ export interface ConversationSummary {
 }
 
 export interface ConversationDetail {
+  agent_id: string;
   convo_id: string;
+  convo_type: string;
   title?: string;
   messages: Array<{
     role: string;
@@ -107,6 +111,8 @@ export const api = {
     id: string;
     name: string;
     platform?: string;
+    qq_app_id?: string;
+    qq_app_secret?: string;
     llm_provider?: string;
     deepseek_api_key?: string;
     deepseek_model?: string;
@@ -128,8 +134,8 @@ export const api = {
   // Conversations
   conversations: (limit?: number) =>
     request<{ conversations: ConversationSummary[] }>('GET', `/conversations?limit=${limit || 20}`),
-  conversation: (id: string) =>
-    request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}`),
+  conversation: (id: string, agentId?: string) =>
+    request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}?agent=${encodeURIComponent(agentId || 'default')}`),
 };
 
 // ── Auth API (credential-based) ─────────────────────────────────────────────

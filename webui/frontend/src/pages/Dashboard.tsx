@@ -38,7 +38,7 @@ export default function Dashboard() {
             className={`w-2 h-2 rounded-full ${a.status === 'running' ? 'bg-green-400' : a.status === 'error' ? 'bg-red-400' : 'bg-gray-500'}`}
             aria-label={`status: ${a.status}`}
           />
-          <span className="flex-1 font-medium">{a.name}</span>
+          <span className="flex-1 font-medium">{a.bot_nick || a.name}</span>
           <span className="text-xs text-gray-500">{a.id}</span>
           <span className={`text-xs px-2 py-0.5 rounded ${
             a.status === 'running' ? 'bg-green-900/50 text-green-400' :

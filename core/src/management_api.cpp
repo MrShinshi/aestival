@@ -255,6 +255,10 @@ struct management_api::impl {
 		if (auto qq = j.find("qq"); qq != j.end()) {
 			cfg.qq_app_id = truncate_str(qq->value("app_id", ""), k_max_app_id);
 			cfg.qq_app_secret = truncate_str(qq->value("app_secret", ""), k_max_api_key);
+		} else {
+			// Accept flat keys from Web UI forms
+			cfg.qq_app_id = truncate_str(j.value("qq_app_id", ""), k_max_app_id);
+			cfg.qq_app_secret = truncate_str(j.value("qq_app_secret", ""), k_max_api_key);
 		}
 		cfg.llm_provider = j.value("llm_provider", "deepseek");
 		if (!is_valid_llm_provider(cfg.llm_provider))

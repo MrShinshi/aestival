@@ -104,6 +104,8 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
     id: '',
     name: '',
     platform: 'qq',
+    qq_app_id: '',
+    qq_app_secret: '',
     llm_provider: 'deepseek',
     deepseek_api_key: '',
     deepseek_model: 'deepseek-chat',
@@ -120,6 +122,11 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
         platform: cfg.platform,
         llm_provider: cfg.llm_provider,
       };
+      // QQ credentials (flat keys — C++ accepts both nested and flat now)
+      if (cfg.platform === 'qq') {
+        body.qq_app_id = cfg.qq_app_id;
+        body.qq_app_secret = cfg.qq_app_secret;
+      }
       if (cfg.llm_provider === 'deepseek') {
         body.deepseek_api_key = cfg.deepseek_api_key;
         body.deepseek_model = cfg.deepseek_model;
@@ -139,6 +146,10 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
     if (!form.id.trim()) return '请输入 Agent ID';
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(form.id)) return 'ID 只能包含英文、数字、连字符和下划线（1-64 字符）';
     if (!form.name.trim()) return '请输入名称';
+    if (form.platform === 'qq') {
+      if (!form.qq_app_id.trim()) return '请输入 QQ Bot App ID';
+      if (!form.qq_app_secret.trim()) return '请输入 QQ Bot App Secret';
+    }
     if (form.llm_provider === 'deepseek' && !form.deepseek_api_key.trim()) return '请输入 DeepSeek API Key';
     if (form.llm_provider === 'openai' && !form.openai_api_key.trim()) return '请输入 OpenAI API Key';
     return null;
@@ -184,6 +195,27 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
               <option value="qq">QQ</option>
             </select>
           </div>
+
+          {form.platform === 'qq' && (
+            <div className="border-t border-gray-800 pt-3 mt-1 space-y-3">
+              <h4 className="text-sm font-medium">QQ Bot 凭据</h4>
+              <p className="text-xs text-gray-600">
+                在 <a href="https://q.qq.com/qqbot" className="text-indigo-400" target="_blank" rel="noopener">QQ 开放平台</a> 创建机器人后获取 App ID 和 App Secret。
+              </p>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">App ID <span className="text-red-400">*</span></label>
+                <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                       placeholder="QQ Bot App ID" value={form.qq_app_id}
+                       onChange={e => setForm({...form, qq_app_id: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">App Secret <span className="text-red-400">*</span></label>
+                <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                       placeholder="QQ Bot App Secret" value={form.qq_app_secret}
+                       onChange={e => setForm({...form, qq_app_secret: e.target.value})} />
+              </div>
+            </div>
+          )}
 
           {/* ── LLM 配置 ────────────────────────────────── */}
           <div className="border-t border-gray-800 pt-3 mt-2">

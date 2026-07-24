@@ -255,6 +255,7 @@ export default function AuthCallback() {
       server_error: '服务器错误，请稍后重试。',
       no_code: '授权被取消。',
       no_verifier: '登录信息丢失，请重新登录。',
+      insecure_context: '当前页面未使用 HTTPS，无法完成安全登录。请使用 HTTPS 访问。',
     };
 
     return (

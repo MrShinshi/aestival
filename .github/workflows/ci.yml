@@ -251,13 +251,11 @@ jobs:
           wait
 
       # ── Build (parallel) ───────────────────────────────────────────────
-      - name: Build backend
-        working-directory: webui/backend
-        run: npm run build
-
-      - name: Build frontend (type-check + vite)
-        working-directory: webui/frontend
-        run: npx tsc --noEmit && npm run build
+      - name: Build all
+        run: |
+          (cd webui/backend  && npm run build) &
+          (cd webui/frontend && npx tsc --noEmit && npm run build) &
+          wait
 
       # ── Deploy ─────────────────────────────────────────────────────────
       - name: Deploy Web UI to server

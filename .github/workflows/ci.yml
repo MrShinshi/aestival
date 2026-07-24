@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master, main]
 
+# Serialize deployments — a new push waits behind the running one so deploy
+# steps never race.  Matrix jobs within a single push all run in parallel.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # ─── Detect which subsystems changed ─────────────────────────────────────
   changes:
@@ -58,11 +64,6 @@ jobs:
       needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-
-    # Per-job concurrency so webui and cpp-build don't cancel each other.
-    concurrency:
-      group: ci-${{ github.ref }}-cpp
-      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -270,10 +271,6 @@ jobs:
       needs.changes.outputs.webui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    concurrency:
-      group: ci-${{ github.ref }}-webui
-      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4

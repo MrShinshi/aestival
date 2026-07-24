@@ -2,43 +2,52 @@
  * aestival Web UI Backend
  *
  * Express server that:
- * 1. Auto-login (no OAuth required)
- * 2. Issues JWT tokens for the bot's internal API
+ * 1. Handles OAuth login (GitHub + QQ)
+ * 2. Issues session JWTs via httpOnly cookies
  * 3. Proxies management requests to the bot's internal API (127.0.0.1:9090)
  * 4. Reads bot log files and SQLite databases directly (read-only)
  * 5. Serves frontend static files
  */
 
+// Must be the FIRST import — loads .env before other modules read process.env
+import './config';
+
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { setupAuth, requireAuth } from './auth';
+import { setupGithubAuth } from './oauth_github';
+import { setupQQAuth } from './oauth_qq';
 import { setupProxy } from './proxy';
 import { setupLogs } from './logs';
 import { setupConversations } from './conversations';
+import { config } from './config';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // Trust Nginx reverse proxy
 app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: config.corsOrigin,
   credentials: true,
 }));
 
 app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
 
-// Public routes (no auth)
-setupAuth(app);
+// ── Public routes (no auth) ────────────────────────────────────────────────
+setupAuth(app);          // /me, /logout, /merge, /unlink
+setupGithubAuth(app);    // /auth/github, /auth/github/callback
+setupQQAuth(app);        // /auth/qq, /auth/qq/callback
 
 // Health check
 app.get('/api/ui/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ── Protected routes (JWT required) ─────────────────────────────────────
+// ── Protected routes (JWT session cookie required) ─────────────────────────
 app.use('/api/ui/agents', requireAuth);
 app.use('/api/ui/conversations', requireAuth);
 app.use('/api/ui/logs', requireAuth);
@@ -48,7 +57,7 @@ setupProxy(app);
 setupLogs(app);
 setupConversations(app);
 
-// Serve frontend static files in production
+// ── Serve frontend static files in production ──────────────────────────────
 const frontendDist = path.resolve(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));
 
@@ -57,6 +66,16 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`aestival Web UI backend listening on http://localhost:${PORT}`);
+app.listen(config.port, () => {
+  console.log(`aestival Web UI backend listening on http://localhost:${config.port}`);
+  if (config.githubClientId) {
+    console.log('  GitHub OAuth: enabled');
+  } else {
+    console.log('  GitHub OAuth: not configured (set GITHUB_CLIENT_ID)');
+  }
+  if (config.qqAppId) {
+    console.log('  QQ OAuth: enabled');
+  } else {
+    console.log('  QQ OAuth: not configured (set QQ_APP_ID)');
+  }
 });

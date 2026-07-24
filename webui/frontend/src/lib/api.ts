@@ -23,8 +23,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     clearTimeout(timer);
 
     if (resp.status === 401) {
-      // Token expired — redirect to refresh
-      window.location.href = '/api/ui/auth/token';
+      // Session expired — redirect to login
+      window.location.href = '/login';
       throw new Error('authentication expired');
     }
 

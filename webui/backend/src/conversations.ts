@@ -14,11 +14,16 @@ import { sanitizeAgentId } from './sanitize';
 // Base path for agent storage dirs
 const CONTEXTS_BASE = process.env.BOT_CONTEXTS_BASE || '/home/shinshi/aestival/bin/contexts';
 
-/** Make a convo_id human-readable when no sender nick is available. */
+/** Derive a readable label from a convo_id. */
 function formatConvoId(convoId: string): string {
-  if (convoId.startsWith('c2c:')) return '私聊';
-  if (convoId.startsWith('group:')) return '群聊';
-  if (convoId.startsWith('guild:') || convoId.startsWith('dm:')) return '频道';
+  // c2c: — use truncated openid (no nick available in C2C)
+  if (convoId.startsWith('c2c:')) {
+    const openid = convoId.substring(4);
+    return '用户:' + openid.substring(0, 12) + '…';
+  }
+  if (convoId.startsWith('group:')) return '群聊:' + convoId.substring(6);
+  if (convoId.startsWith('guild:')) return '频道:' + convoId.substring(6);
+  if (convoId.startsWith('dm:')) return '频道私信:' + convoId.substring(3);
   return convoId;
 }
 

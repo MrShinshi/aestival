@@ -9,6 +9,22 @@ export default function Conversations() {
     refetchInterval: 30_000,
   });
 
+  // Cross-reference agents to resolve agent_id → display name
+  const { data: agents } = useQuery({
+    queryKey: ['agents'],
+    queryFn: api.agents,
+    refetchInterval: 30_000,
+  });
+
+  const agentNames = useMemo(() => {
+    if (!agents) return {} as Record<string, string>;
+    const m: Record<string, string> = {};
+    for (const a of agents) {
+      m[a.id] = a.bot_nick || a.name || a.id;
+    }
+    return m;
+  }, [agents]);
+
   const [selected, setSelected] = useState<{ convoId: string; agentId: string } | null>(null);
 
   // Group by agent → convo_type → conversation
@@ -39,7 +55,7 @@ export default function Conversations() {
           {groups.map(g => (
             <div key={g.agent}>
               <div className="text-xs font-semibold text-indigo-400 mb-1 uppercase tracking-wider">
-                {g.agent}
+                {agentNames[g.agent] || g.agent}
               </div>
               {g.types.map(gt => (
                 <div key={gt.type} className="mb-2">
@@ -93,13 +109,25 @@ function ConversationDetail({ convoId, agentId }: { convoId: string; agentId?: s
     queryFn: () => api.conversation(convoId, agentId),
   });
 
+  // Resolve agent name from the agents list
+  const { data: agents } = useQuery({
+    queryKey: ['agents'],
+    queryFn: api.agents,
+    staleTime: 60_000,
+  });
+  const agentName = useMemo(() => {
+    if (!agents || !data) return data?.agent_id || 'default';
+    const a = agents.find(x => x.id === data.agent_id);
+    return a ? (a.bot_nick || a.name || a.id) : (data.agent_id || 'default');
+  }, [agents, data]);
+
   if (isLoading) return <div className="text-gray-400 text-sm">Loading...</div>;
   if (!data) return <div className="text-gray-400 text-sm">Not found</div>;
 
   return (
     <div className="space-y-3">
       <div className="text-sm text-gray-500 mb-2">
-        <span className="text-indigo-400">{data.agent_id}</span>
+        <span className="text-indigo-400">{agentName}</span>
         {' › '}
         <span>{data.convo_type}</span>
         {' › '}

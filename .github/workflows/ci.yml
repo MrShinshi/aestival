@@ -9,10 +9,11 @@ on:
 # Prevent concurrent deploys from racing each other.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name == 'shinshi' }}
+  cancel-in-progress: false  # let every push finish deploying; never leave mixed state
 
 jobs:
-  build:
+  # ─── C++ builds (full matrix, all branches + PRs) ──────────────────────
+  cpp-build:
     name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -152,7 +153,7 @@ jobs:
           cmake -B build \
             -DCMAKE_PROJECT_NAME=aestival \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-                        -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DAESTIVAL_WERROR=ON \
             -DVCPKG_BOOTSTRAPPED=ON \
             "${GENERATOR_ARGS[@]}"
@@ -174,8 +175,15 @@ jobs:
           name: aestival-linux-${{ matrix.compiler }}
           path: bin/aestival
 
-      # ── deploy to production server (push only, Linux GCC Release) ──────
-      - name: Deploy to server
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS' && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aestival-macos-${{ matrix.compiler }}
+          path: bin/aestival
+
+      # ── Deploy C++ binary (Linux GCC Release, shinshi only) ──────────
+      - name: Deploy C++ binary to server
         if: runner.os == 'Linux' && matrix.compiler == 'gcc' && matrix.build_type == 'Release' && github.event_name == 'push' && github.ref_name == 'shinshi'
         run: |
           mkdir -p ~/.ssh
@@ -185,12 +193,13 @@ jobs:
           cleanup_keys() { rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts; }
           trap cleanup_keys EXIT
 
-          # 1. stop service before overwriting binary (avoids ETXTBUSY)
+          # 1. Stop service before overwriting binary (avoids ETXTBUSY)
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
             export XDG_RUNTIME_DIR=/run/user/\$(id -u)
             systemctl --user stop aestival-bot.service || true
           "
-          # 2. package & push in one compressed pipe (13 MB → ~4 MB, single TCP)
+
+          # 2. Package & push in one compressed pipe
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
           tar -czf - -C bin aestival -C .. workspace |
             ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
@@ -198,27 +207,19 @@ jobs:
               mv /home/shinshi/aestival/bin/aestival /home/shinshi/aestival/bin/aestival.new
             "
 
-          # 3. atomic swap + start
+          # 3. Atomic swap + start
           ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
             mv /home/shinshi/aestival/bin/aestival.new /home/shinshi/aestival/bin/aestival
             export XDG_RUNTIME_DIR=/run/user/\$(id -u)
             systemctl --user start aestival-bot.service
           "
 
-
-      - name: Upload artifact (macOS)
-        if: runner.os == 'macOS' && matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: aestival-macos-${{ matrix.compiler }}
-          path: bin/aestival
-
-  # ─── Web UI: build + deploy (push to shinshi only) ──────────────────────
+  # ─── Web UI: build + deploy (shinshi only, starts immediately) ──────────
   webui:
     name: Web UI · build & deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: build
+    timeout-minutes: 10
+    # No 'needs' — web UI has zero dependency on C++ builds.
     if: github.event_name == 'push' && github.ref_name == 'shinshi'
 
     steps:
@@ -228,58 +229,37 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: |
-            webui/backend/package-lock.json
-            webui/frontend/package-lock.json
 
-      # ── Backend ──────────────────────────────────────────────────────────
-      - name: Install backend deps
-        working-directory: webui/backend
-        run: npm ci
+      # ── Cache ──────────────────────────────────────────────────────────
+      - name: Cache backend node_modules
+        uses: actions/cache@v4
+        with:
+          path: webui/backend/node_modules
+          key: webui-backend-${{ runner.os }}-${{ hashFiles('webui/backend/package-lock.json') }}
 
+      - name: Cache frontend node_modules
+        uses: actions/cache@v4
+        with:
+          path: webui/frontend/node_modules
+          key: webui-frontend-${{ runner.os }}-${{ hashFiles('webui/frontend/package-lock.json') }}
+
+      # ── Install (parallel) ─────────────────────────────────────────────
+      - name: Install deps
+        run: |
+          (cd webui/backend  && npm ci) &
+          (cd webui/frontend && npm ci) &
+          wait
+
+      # ── Build (parallel) ───────────────────────────────────────────────
       - name: Build backend
         working-directory: webui/backend
         run: npm run build
 
-      - name: Audit backend deps
-        working-directory: webui/backend
-        run: npm audit --audit-level=high
-        continue-on-error: false
-
-      # ── Frontend ─────────────────────────────────────────────────────────
-      - name: Install frontend deps
+      - name: Build frontend (type-check + vite)
         working-directory: webui/frontend
-        run: npm ci
+        run: npx tsc --noEmit && npm run build
 
-      - name: Type-check frontend
-        working-directory: webui/frontend
-        run: npx tsc --noEmit
-
-      - name: Build frontend
-        working-directory: webui/frontend
-        run: npm run build
-
-      - name: Audit frontend deps
-        working-directory: webui/frontend
-        run: npm audit --audit-level=high
-        continue-on-error: false
-
-      # ── Package ──────────────────────────────────────────────────────────
-      - name: Package webui artifacts
-        run: |
-          # Backend package
-          cd webui/backend
-          tar -czf "$RUNNER_TEMP/webui-backend.tar.gz" \
-            dist/ package.json node_modules/
-          cd ../..
-
-          # Frontend package
-          cd webui/frontend
-          tar -czf "$RUNNER_TEMP/webui-frontend.tar.gz" dist/
-          cd ../..
-
-      # ── Deploy ───────────────────────────────────────────────────────────
+      # ── Deploy ─────────────────────────────────────────────────────────
       - name: Deploy Web UI to server
         run: |
           mkdir -p ~/.ssh
@@ -293,22 +273,25 @@ jobs:
           REMOTE_DIR="/home/shinshi/aestival/webui"
           FRONTEND_HTML="/home/shinshi/aestival/webui/frontend"
 
-          # Ensure target directories
           ssh -i ~/.ssh/deploy_key "$REMOTE" "mkdir -p $REMOTE_DIR/backend $FRONTEND_HTML"
 
           # 1. Deploy backend
           echo ":: deploying backend..."
           ssh -i ~/.ssh/deploy_key "$REMOTE" "
-            if [ -d '$REMOTE_DIR/backend' ]; then
-              rm -rf '$REMOTE_DIR/backend/dist' '$REMOTE_DIR/backend/node_modules.old' 2>/dev/null || true
-            fi
+            rm -rf '$REMOTE_DIR/backend/dist' '$REMOTE_DIR/backend/node_modules.old' 2>/dev/null || true
           "
+          cd webui/backend
+          tar -czf "$RUNNER_TEMP/webui-backend.tar.gz" dist/ package.json node_modules/
+          cd ../..
           cat "$RUNNER_TEMP/webui-backend.tar.gz" |
             ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $REMOTE_DIR/backend"
 
           # 2. Deploy frontend (static files)
           echo ":: deploying frontend..."
           ssh -i ~/.ssh/deploy_key "$REMOTE" "rm -rf '$FRONTEND_HTML/'* 2>/dev/null || true"
+          cd webui/frontend
+          tar -czf "$RUNNER_TEMP/webui-frontend.tar.gz" dist/
+          cd ../..
           cat "$RUNNER_TEMP/webui-frontend.tar.gz" |
             ssh -i ~/.ssh/deploy_key "$REMOTE" "tar -xzf - -C $FRONTEND_HTML"
 

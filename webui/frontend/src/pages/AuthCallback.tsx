@@ -1,47 +1,172 @@
 /**
- * Post-OAuth redirect handler page.
+ * Post-OAuth redirect handler.
  *
- * The Express backend redirects the browser here after a completed OAuth flow.
- * Query parameters:
- *   ?login=success&redirect=/settings   — auth succeeded, refresh session + redirect
- *   ?error=conflict&targetUserId=X&...  — account conflict detected, show merge UI
- *   ?error=invalid_state                — CSRF or expired state token
+ * GitHub (PKCE flow):
+ *   1. Read code + state from URL params
+ *   2. Read code_verifier from sessionStorage
+ *   3. POST to GitHub /access_token (browser can reach GitHub; PKCE)
+ *   4. GET GitHub /user with access_token
+ *   5. POST verified identity to /api/ui/auth/github/exchange
+ *   6. Handle success / conflict
+ *
+ * QQ:
+ *   The backend handles the entire server-side OAuth flow.
+ *   This page is reached via 302 from the backend callbacks.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+
+const GITHUB_TOKEN = 'https://github.com/login/oauth/access_token';
+const GITHUB_USER = 'https://api.github.com/user';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refresh } = useAuth();
+  const [conflict, setConflict] = useState<{
+    targetUserId: string;
+    targetUsername: string;
+    sourceUserId: string;
+    sourceUsername: string;
+  } | null>(null);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState('');
+  const didRun = useRef(false);
 
+  const error = searchParams.get('error');
+  const provider = searchParams.get('provider') || 'github';
   const loginSuccess = searchParams.get('login') === 'success';
   const redirect = searchParams.get('redirect') || '/';
-  const error = searchParams.get('error');
-  const provider = searchParams.get('provider') || '';
-  const targetUserId = searchParams.get('targetUserId');
-  const targetUsername = searchParams.get('targetUsername');
-  const sourceUserId = searchParams.get('sourceUserId');
-  const sourceUsername = searchParams.get('sourceUsername');
 
-  // Refresh the auth state from the new session cookie, then redirect
+  // ── GitHub PKCE exchange (runs once on mount) ──────────────────────────
   useEffect(() => {
-    if (!loginSuccess && !error) return;
+    // Don't run if already handled or if this is a QQ/error/success redirect
+    if (didRun.current) return;
+    if (error || loginSuccess || !searchParams.get('code')) return;
+    didRun.current = true;
 
-    if (loginSuccess) {
-      refresh().then(() => {
-        navigate(redirect, { replace: true });
-      });
+    const code = searchParams.get('code')!;
+    const state = searchParams.get('state')!;
+
+    // Verify state matches what we sent
+    const storedState = sessionStorage.getItem('github_state');
+    if (!storedState || storedState !== state) {
+      navigate('/auth/callback?error=invalid_state', { replace: true });
+      return;
     }
-  }, [loginSuccess, error, redirect, refresh, navigate]);
 
+    const codeVerifier = sessionStorage.getItem('github_code_verifier');
+    const clientId = sessionStorage.getItem('github_client_id');
+    const redirectUri = sessionStorage.getItem('github_redirect_uri');
+    sessionStorage.removeItem('github_code_verifier');
+    sessionStorage.removeItem('github_state');
+    sessionStorage.removeItem('github_client_id');
+    sessionStorage.removeItem('github_redirect_uri');
+
+    if (!codeVerifier || !clientId || !redirectUri) {
+      navigate('/auth/callback?error=no_verifier&provider=github', { replace: true });
+      return;
+    }
+
+    async function pkceExchange() {
+      try {
+        // 1. Exchange code for access_token (browser can reach GitHub)
+        const tokenResp = await fetch(GITHUB_TOKEN, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            client_id: clientId,
+            code,
+            redirect_uri: redirectUri,
+            code_verifier: codeVerifier,
+          }),
+        });
+
+        if (!tokenResp.ok) {
+          navigate('/auth/callback?error=token_exchange&provider=github', { replace: true });
+          return;
+        }
+
+        const tokenData = await tokenResp.json();
+        const accessToken = tokenData.access_token;
+        if (!accessToken) {
+          navigate('/auth/callback?error=token_exchange&provider=github', { replace: true });
+          return;
+        }
+
+        // 2. Fetch user profile
+        const userResp = await fetch(GITHUB_USER, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
+        });
+
+        if (!userResp.ok) {
+          navigate('/auth/callback?error=user_fetch&provider=github', { replace: true });
+          return;
+        }
+
+        const userData = await userResp.json();
+
+        // 3. POST verified identity to our backend
+        const exchangeResp = await fetch('/api/ui/auth/github/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            providerUserId: String(userData.id),
+            username: userData.login,
+            avatarUrl: userData.avatar_url || '',
+            state: state,
+          }),
+        });
+
+        if (!exchangeResp.ok) {
+          navigate('/auth/callback?error=server_error&provider=github', { replace: true });
+          return;
+        }
+
+        const exchangeData = await exchangeResp.json();
+
+        // Conflict — show merge UI
+        if (exchangeData.conflict) {
+          setConflict({
+            targetUserId: exchangeData.targetUserId,
+            targetUsername: exchangeData.targetUsername,
+            sourceUserId: exchangeData.sourceUserId,
+            sourceUsername: exchangeData.sourceUsername,
+          });
+          return;
+        }
+
+        // Success
+        await refresh();
+        navigate(exchangeData.redirect || '/', { replace: true });
+      } catch {
+        navigate('/auth/callback?error=server_error&provider=github', { replace: true });
+      }
+    }
+
+    pkceExchange();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Server-side OAuth success (QQ) ────────────────────────────────────
+  useEffect(() => {
+    if (!loginSuccess) return;
+    refresh().then(() => {
+      navigate(redirect, { replace: true });
+    });
+  }, [loginSuccess, redirect, refresh, navigate]);
+
+  // ── Merge handler ─────────────────────────────────────────────────────
   const handleMerge = async () => {
-    if (!targetUserId || !sourceUserId) return;
-
+    if (!conflict || merging) return;
     setMerging(true);
     setMergeError('');
 
@@ -50,7 +175,10 @@ export default function AuthCallback() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ targetUserId, sourceUserId }),
+        body: JSON.stringify({
+          targetUserId: conflict.targetUserId,
+          sourceUserId: conflict.sourceUserId,
+        }),
       });
 
       if (resp.ok) {
@@ -67,44 +195,33 @@ export default function AuthCallback() {
     }
   };
 
-  const handleCancel = () => {
-    navigate('/settings', { replace: true });
-  };
-
-  // ── Conflict UI ──────────────────────────────────────────────────────
-  if (error === 'conflict' && targetUserId && sourceUserId) {
+  // ── Conflict UI ───────────────────────────────────────────────────────
+  if (conflict) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0f0d1e]">
         <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-200 mb-4">
-            账号冲突
-          </h2>
-
+          <h2 className="text-lg font-semibold text-gray-200 mb-4">账号冲突</h2>
           <p className="text-sm text-gray-400 mb-2">
             此{provider === 'github' ? 'GitHub' : 'QQ'}账号已绑定到另一个账户。
           </p>
-
           <div className="bg-gray-800 rounded p-4 mb-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">当前账户</span>
-              <span className="text-gray-200 font-medium">{targetUsername}</span>
+              <span className="text-gray-200 font-medium">{conflict.targetUsername}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">冲突账户</span>
-              <span className="text-gray-200 font-medium">{sourceUsername}</span>
+              <span className="text-gray-200 font-medium">{conflict.sourceUsername}</span>
             </div>
           </div>
-
           <p className="text-sm text-gray-400 mb-6">
             是否将冲突账户的所有绑定迁移到当前账户？冲突账户将被删除。
           </p>
-
           {mergeError && (
             <div className="mb-4 p-3 bg-red-900/30 border border-red-800/50 rounded text-sm text-red-400">
               {mergeError}
             </div>
           )}
-
           <div className="flex gap-3">
             <button
               onClick={handleMerge}
@@ -116,7 +233,7 @@ export default function AuthCallback() {
               {merging ? '合并中…' : '合并'}
             </button>
             <button
-              onClick={handleCancel}
+              onClick={() => navigate('/settings', { replace: true })}
               disabled={merging}
               className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600
                          rounded text-sm font-medium transition-colors"
@@ -130,13 +247,14 @@ export default function AuthCallback() {
   }
 
   // ── Error UI ──────────────────────────────────────────────────────────
-  if (error && error !== 'conflict') {
+  if (error) {
     const messages: Record<string, string> = {
       invalid_state: '登录请求已过期，请重新登录。',
       token_exchange: '授权验证失败，请重试。',
       user_fetch: '获取用户信息失败，请稍后重试。',
       server_error: '服务器错误，请稍后重试。',
       no_code: '授权被取消。',
+      no_verifier: '登录信息丢失，请重新登录。',
     };
 
     return (
@@ -158,13 +276,17 @@ export default function AuthCallback() {
     );
   }
 
-  // ── Loading state (waiting for refresh) ───────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────
   return (
     <div className="flex items-center justify-center h-screen bg-[#0f0d1e]">
       <div className="text-center">
         <div className="animate-spin h-8 w-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-3" />
         <p className="text-gray-400 text-sm">
-          {loginSuccess ? '登录成功，正在跳转…' : '处理中…'}
+          {searchParams.get('code')
+            ? '正在登录…'
+            : loginSuccess
+              ? '登录成功，正在跳转…'
+              : '处理中…'}
         </p>
       </div>
     </div>

@@ -28,10 +28,12 @@ jobs:
         uses: dorny/paths-filter@v3
         id: filter
         with:
-          # When a filter matches no changed files its output is 'false'.
-          # PRs: always set both to 'true' so the full matrix runs.
-          # Pushes: only the affected subsystem(s) build.
-          predicate-quantifier: 'every'
+          # Default quantifier: 'some' — a filter is 'true' when at least one
+          # changed file matches its patterns.  This is the safe default:
+          #   - only webui changes → cpp='false' → C++ skipped
+          #   - only C++ changes   → webui='false' → webui skipped
+          #   - ci.yml changed     → both run (always safe to test CI changes)
+          #   - PRs bypass filters entirely (safety net before merge)
           filters: |
             cpp:
               - 'app/**'

@@ -75,15 +75,19 @@ jobs:
           - os: windows-latest
             compiler: msvc
             build_type: Release
+            vcpkg_root: C:/vcpkg
           - os: ubuntu-latest
             compiler: gcc
             build_type: Release
+            vcpkg_root: /usr/local/share/vcpkg
           - os: ubuntu-latest
             compiler: clang
             build_type: Release
+            vcpkg_root: /usr/local/share/vcpkg
           - os: macos-latest
             compiler: apple-clang
             build_type: Release
+            vcpkg_root: /usr/local/share/vcpkg
 
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +121,11 @@ jobs:
       # Tiers 2+3 make that rebuild MUCH faster (no download, no recompile
       # of unchanged packages).  Without them every cache miss means
       # re-downloading AND recompiling ALL of Boost on Windows — 20+ min.
+      #
+      # NOTE: tiers 1+2 are workspace-relative so they restore before the
+      # Prepare step.  Tier 3 (buildtrees) lives under the system vcpkg
+      # root — it is restored in a later step, after Prepare has set
+      # VCPKG_ROOT so the path can be resolved.
       - name: Cache vcpkg installed
         uses: actions/cache@v4
         with:
@@ -190,7 +199,8 @@ jobs:
             printf 'VCPKG_ROOT=%s\n' "$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
             if [[ -d "$VCPKG_INSTALLATION_ROOT/.git" ]]; then
               git -C "$VCPKG_INSTALLATION_ROOT" reset --hard
-              git -C "$VCPKG_INSTALLATION_ROOT" clean -fdx
+              # clean untracked/ignored files but preserve buildtrees (cached)
+              git -C "$VCPKG_INSTALLATION_ROOT" clean -fdx -e buildtrees
               git -C "$VCPKG_INSTALLATION_ROOT" fetch origin master --tags --prune
               git -C "$VCPKG_INSTALLATION_ROOT" checkout -B master FETCH_HEAD
             fi
@@ -199,6 +209,18 @@ jobs:
           # installed/ cache misses, we skip re-downloading Boost etc.
           mkdir -p "$GITHUB_WORKSPACE/.vcpkg-cache/downloads"
           printf 'VCPKG_DOWNLOADS=%s/.vcpkg-cache/downloads\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Restore intermediate build objects so incremental recompile of
+      # unchanged vcpkg packages is instant.  Placed after Prepare so
+      # it runs after git-clean (which now preserves buildtrees/).
+      - name: Cache vcpkg buildtrees
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.vcpkg_root }}/buildtrees
+          key: vcpkg-bt-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bt-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-
+            vcpkg-bt-${{ runner.os }}-${{ matrix.compiler }}-
 
       - name: Configure
         shell: bash
@@ -321,19 +343,27 @@ jobs:
           path: webui/frontend/node_modules
           key: webui-frontend-${{ runner.os }}-${{ hashFiles('webui/frontend/package-lock.json') }}
 
-      # ── Install (parallel) ─────────────────────────────────────────────
+      # ── Install (parallel, fail if either side fails) ──────────────────
       - name: Install deps
         run: |
-          (cd webui/backend  && npm ci) &
-          (cd webui/frontend && npm ci) &
+          (cd webui/backend  && npm ci) & pid1=$!
+          (cd webui/frontend && npm ci) & pid2=$!
+          wait $pid1 && wait $pid2
+
+      # ── Audit (advisory only — never blocks build) ────────────────────
+      - name: Audit dependencies
+        continue-on-error: true
+        run: |
+          (cd webui/backend  && npm audit --audit-level=high) &
+          (cd webui/frontend && npm audit --audit-level=high) &
           wait
 
-      # ── Build (parallel) ───────────────────────────────────────────────
+      # ── Build (parallel, fail if either side fails) ──────────────────
       - name: Build all
         run: |
-          (cd webui/backend  && npm run build) &
-          (cd webui/frontend && npx tsc --noEmit && npm run build) &
-          wait
+          (cd webui/backend  && npm run build) & pid1=$!
+          (cd webui/frontend && npx tsc --noEmit && npm run build) & pid2=$!
+          wait $pid1 && wait $pid2
 
       # ── Deploy (single tar pipe, single SSH call) ──────────────────────
       #

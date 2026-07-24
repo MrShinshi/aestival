@@ -1,0 +1,50 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [master, main]
+  schedule:
+    - cron: '31 9 * * 3'   # weekly on Wednesday (off-peak)
+  workflow_dispatch:        # manual trigger
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript', 'c-cpp']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended,security-and-quality
+          config: |
+            paths-ignore:
+              - '**/vcpkg_installed/**'
+              - '**/node_modules/**'
+              - '**/dist/**'
+
+      # build-mode: none — extract source-level patterns only.
+      # C++ gets basic coverage (hardcoded keys, injection patterns, etc.)
+      # without needing the full vcpkg+CMake build.  For deeper C++ analysis
+      # (buffer overflows, use-after-free) we'd need to add a build step
+      # with vcpkg, which is cost-prohibitive for weekly scans.
+      # JS/TS needs no build step regardless.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

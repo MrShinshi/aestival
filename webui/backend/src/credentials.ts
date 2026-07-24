@@ -163,12 +163,33 @@ export async function loginWithPassword(
 }
 
 /** Look up a user by exact username (case-sensitive). */
-function getUserByUsername(username: string): User | null {
+export function getUserByUsername(username: string): User | null {
   const db = getAuthDb();
   const row = db
     .prepare('SELECT * FROM users WHERE username = ?')
     .get(username) as any;
   return row ? rowToUser(row) : null;
+}
+
+/**
+ * One-shot admin credential setup.
+ *
+ * Looks up an existing user by username, hashes the password, and stores
+ * it via upsert.  Fails silently if the user doesn't exist — this is for
+ * boot-time preset, not interactive registration.
+ *
+ * Returns true if the password was set, false if the user wasn't found.
+ */
+export async function ensureAdminPassword(
+  username: string,
+  password: string,
+): Promise<boolean> {
+  const user = getUserByUsername(username);
+  if (!user) return false;
+
+  const hash = await hashPassword(password);
+  setPassword(user.id, hash);
+  return true;
 }
 
 /**

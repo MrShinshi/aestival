@@ -74,4 +74,9 @@ export const config = {
   qqAppId: process.env.QQ_APP_ID || '',
   qqAppSecret: process.env.QQ_APP_SECRET || '',
   qqRedirectUri: process.env.QQ_REDIRECT_URI || '',
+
+  // Admin credential preset — automatically binds a password to an existing
+  // OAuth user on startup.  Set both to enable.
+  adminUser: process.env.AUTH_ADMIN_USER || '',
+  adminPass: process.env.AUTH_ADMIN_PASS || '',
 };

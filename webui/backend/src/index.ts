@@ -23,6 +23,7 @@ import { setupProxy } from './proxy';
 import { setupLogs } from './logs';
 import { setupConversations } from './conversations';
 import { config } from './config';
+import { ensureAdminPassword } from './credentials';
 
 const app = express();
 
@@ -66,8 +67,20 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-app.listen(config.port, () => {
+app.listen(config.port, async () => {
   console.log(`aestival Web UI backend listening on http://localhost:${config.port}`);
+
+  // ── Admin credential preset ─────────────────────────────────────────────
+  // If AUTH_ADMIN_USER + AUTH_ADMIN_PASS are set, bind a password to the
+  // named OAuth user on startup so they can also log in with credentials.
+  if (config.adminUser && config.adminPass) {
+    const ok = await ensureAdminPassword(config.adminUser, config.adminPass);
+    if (ok) {
+      console.log(`  Admin password: set for "${config.adminUser}"`);
+    } else {
+      console.log(`  Admin password: user "${config.adminUser}" not found (yet)`);
+    }
+  }
   if (config.githubClientId) {
     console.log('  GitHub OAuth: enabled');
   } else {

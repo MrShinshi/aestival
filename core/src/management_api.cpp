@@ -227,6 +227,10 @@ struct management_api::impl {
 				j["platform"] = inst->config.platform;
 				j["enabled"] = inst->config.enabled;
 				j["message_count"] = inst->metrics.message_count.load();
+				if (!inst->bot_nick.empty())
+					j["bot_nick"] = inst->bot_nick;
+				if (!inst->bot_avatar.empty())
+					j["bot_avatar"] = inst->bot_avatar;
 				if (!inst->metrics.last_error.empty())
 					j["last_error"] = inst->metrics.last_error;
 			}
@@ -255,9 +259,21 @@ struct management_api::impl {
 		cfg.llm_provider = j.value("llm_provider", "deepseek");
 		if (!is_valid_llm_provider(cfg.llm_provider))
 			throw std::runtime_error("invalid llm_provider: must be 'deepseek' or 'openai'");
+		// Accept both flat keys (from Web UI) and nested objects (from config file)
 		if (auto ds = j.find("deepseek"); ds != j.end()) {
 			cfg.deepseek_api_key = truncate_str(ds->value("api_key", ""), k_max_api_key);
 			cfg.deepseek_model = truncate_str(ds->value("model", "deepseek-chat"), k_max_app_id);
+		} else {
+			cfg.deepseek_api_key = truncate_str(j.value("deepseek_api_key", ""), k_max_api_key);
+			cfg.deepseek_model = truncate_str(j.value("deepseek_model", "deepseek-chat"), k_max_app_id);
+		}
+		// Likewise for OpenAI
+		if (auto oa = j.find("openai"); oa != j.end()) {
+			cfg.openai_api_key = truncate_str(oa->value("api_key", ""), k_max_api_key);
+			cfg.openai_model = truncate_str(oa->value("model", "gpt-4o"), k_max_app_id);
+		} else {
+			cfg.openai_api_key = truncate_str(j.value("openai_api_key", ""), k_max_api_key);
+			cfg.openai_model = truncate_str(j.value("openai_model", "gpt-4o"), k_max_app_id);
 		}
 		cfg.workspace = truncate_str(j.value("workspace", cfg.workspace), k_max_path);
 		if (!is_safe_path_component(cfg.workspace))

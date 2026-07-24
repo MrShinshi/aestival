@@ -125,4 +125,28 @@ void session::on_connect(raw_connect_handler handler) {
 	raw_connect_handler_ = std::move(handler);
 }
 
+// ─── bot identity accessors ─────────────────────────────────────────────────
+
+std::string session::bot_id() const {
+	std::lock_guard<std::mutex> lk(bot_identity_mutex_);
+	return bot_id_;
+}
+
+std::string session::bot_username() const {
+	std::lock_guard<std::mutex> lk(bot_identity_mutex_);
+	return bot_username_;
+}
+
+std::string session::bot_avatar() const {
+	std::lock_guard<std::mutex> lk(bot_identity_mutex_);
+	return bot_avatar_;
+}
+
+void session::set_bot_identity(std::string id, std::string username, std::string avatar) {
+	std::lock_guard<std::mutex> lk(bot_identity_mutex_);
+	bot_id_ = std::move(id);
+	bot_username_ = std::move(username);
+	bot_avatar_ = std::move(avatar);
+}
+
 } // namespace platform::qq

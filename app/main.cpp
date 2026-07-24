@@ -211,6 +211,8 @@ int main(int argc, char* argv[]) {
 	client::log::info("=== aestival running (" + std::to_string(registry.count()) + " agents) ===");
 
 	// Main loop: poll until all agents are stopped or shutdown signal received.
+	// When the management API is enabled, the process must stay alive even
+	// with zero running agents so the Web UI can start/stop agents at will.
 	while (!s_shutdown.load()) {
 		auto agents = registry.list_agents();
 		bool any_running = false;
@@ -220,7 +222,7 @@ int main(int argc, char* argv[]) {
 				break;
 			}
 		}
-		if (!any_running)
+		if (!any_running && !cfg.global.management_api_enabled)
 			break;
 		std::this_thread::sleep_for(k_qq_poll_interval);
 	}

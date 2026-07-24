@@ -6,6 +6,7 @@
 #pragma once
 
 #include "chat_context_manager.h"
+#include "encode_utils.h"
 #include "log.h"
 
 #include <nlohmann/json.hpp>
@@ -171,10 +172,15 @@ struct sqlite_backend : chat_storage_backend {
 			return;
 		}
 
+		// Sanitize content to ensure valid UTF-8 before storing.
+		// QQ messages may contain broken encoding from clients.
+		auto safe_content = client::sanitize_utf8(m.content);
+		auto safe_nick = client::sanitize_utf8(m.sender_nick);
+
 		sqlite3_bind_text(stmt, 1, convo_id.c_str(), -1, SQLITE_STATIC);
 		sqlite3_bind_text(stmt, 2, m.role.c_str(), -1, SQLITE_STATIC);
-		sqlite3_bind_text(stmt, 3, m.sender_nick.c_str(), -1, SQLITE_STATIC);
-		sqlite3_bind_text(stmt, 4, m.content.c_str(), -1, SQLITE_STATIC);
+		sqlite3_bind_text(stmt, 3, safe_nick.c_str(), -1, SQLITE_STATIC);
+		sqlite3_bind_text(stmt, 4, safe_content.c_str(), -1, SQLITE_STATIC);
 		sqlite3_bind_text(stmt, 5, m.tool_call_id.c_str(), -1, SQLITE_STATIC);
 		sqlite3_bind_text(stmt, 6, m.tool_calls_json.c_str(), -1, SQLITE_STATIC);
 		auto now_ms =

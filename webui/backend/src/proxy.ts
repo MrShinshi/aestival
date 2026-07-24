@@ -32,27 +32,41 @@ async function proxyToBot(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
-
-  const opts: RequestInit = { method, headers, signal: controller.signal };
+  const opts: RequestInit = { method, headers };
   if (body && method !== 'GET') {
     opts.body = JSON.stringify(body);
   }
 
-  try {
-    const resp = await fetch(url, opts);
-    clearTimeout(timer);
-    const data = await resp.json();
-    return { status: resp.status, data };
-  } finally {
-    clearTimeout(timer);
+  // Try once, then retry once after 500ms for transient failures
+  let lastError: any;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    opts.signal = controller.signal;
+
+    try {
+      const resp = await fetch(url, opts);
+      clearTimeout(timer);
+      const data = await resp.json();
+      return { status: resp.status, data };
+    } catch (err: any) {
+      clearTimeout(timer);
+      lastError = err;
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
   }
+
+  throw lastError;
 }
 
 function internalError(res: Response, err: any, detail: string) {
   console.error(`[proxy] ${detail}:`, err);
-  res.status(502).json({ error: 'bot API unreachable' });
+  const msg = err?.cause?.code === 'ECONNREFUSED'
+    ? 'Bot 进程未运行，请在服务器上检查 bot 服务状态'
+    : 'Bot API 无响应，请稍后重试';
+  res.status(502).json({ error: msg });
 }
 
 /**

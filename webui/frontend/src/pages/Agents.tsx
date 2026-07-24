@@ -40,9 +40,16 @@ export default function Agents() {
         {agents?.map((a: AgentInfo) => (
           <div key={a.id} className="bg-gray-900 rounded-lg border border-gray-800 p-4">
             <div className="flex items-center justify-between mb-2">
-              <div>
-                <span className="font-medium">{a.name}</span>
-                <span className="text-xs text-gray-500 ml-2">{a.id}</span>
+              <div className="flex items-center gap-3">
+                {a.bot_avatar && (
+                  <img src={a.bot_avatar} alt="" className="w-8 h-8 rounded-full" />
+                )}
+                <div>
+                  <div className="font-medium">
+                    {a.bot_nick || a.name}
+                  </div>
+                  <div className="text-xs text-gray-500">{a.id}</div>
+                </div>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded ${
                 a.status === 'running' ? 'bg-green-900/50 text-green-400' :
@@ -55,18 +62,20 @@ export default function Agents() {
               {a.last_error && <span className="text-red-400">错误: {a.last_error}</span>}
             </div>
             <div className="flex gap-2">
-              {a.status !== 'running' && (
+              {a.status !== 'running' && a.status !== 'starting' && (
                 <button
                   onClick={() => startMutation.mutate(a.id)}
-                  className="px-2 py-1 bg-green-800 hover:bg-green-700 text-green-300 text-xs rounded"
+                  disabled={startMutation.isPending}
+                  className="px-2 py-1 bg-green-800 hover:bg-green-700 text-green-300 text-xs rounded disabled:opacity-50"
                 >
-                  启动
+                  {startMutation.isPending ? '启动中…' : '启动'}
                 </button>
               )}
               {(a.status === 'running' || a.status === 'starting') && (
                 <button
                   onClick={() => stopMutation.mutate(a.id)}
-                  className="px-2 py-1 bg-yellow-800 hover:bg-yellow-700 text-yellow-300 text-xs rounded"
+                  disabled={stopMutation.isPending}
+                  className="px-2 py-1 bg-yellow-800 hover:bg-yellow-700 text-yellow-300 text-xs rounded disabled:opacity-50"
                 >
                   停止
                 </button>
@@ -91,44 +100,159 @@ export default function Agents() {
 
 function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ id: '', name: '', platform: 'qq' });
+  const [form, setForm] = useState({
+    id: '',
+    name: '',
+    platform: 'qq',
+    llm_provider: 'deepseek',
+    deepseek_api_key: '',
+    deepseek_model: 'deepseek-chat',
+    openai_api_key: '',
+    openai_model: 'gpt-4o',
+  });
+  const [localError, setLocalError] = useState('');
 
   const createMutation = useMutation({
-    mutationFn: (cfg: { id: string; name: string; platform?: string }) => api.createAgent(cfg),
+    mutationFn: (cfg: typeof form) => {
+      const body: Record<string, unknown> = {
+        id: cfg.id,
+        name: cfg.name || cfg.id,
+        platform: cfg.platform,
+        llm_provider: cfg.llm_provider,
+      };
+      if (cfg.llm_provider === 'deepseek') {
+        body.deepseek_api_key = cfg.deepseek_api_key;
+        body.deepseek_model = cfg.deepseek_model;
+      } else {
+        body.openai_api_key = cfg.openai_api_key;
+        body.openai_model = cfg.openai_model;
+      }
+      return api.createAgent(body as any);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       onClose();
     },
   });
 
+  const validate = (): string | null => {
+    if (!form.id.trim()) return '请输入 Agent ID';
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(form.id)) return 'ID 只能包含英文、数字、连字符和下划线（1-64 字符）';
+    if (!form.name.trim()) return '请输入名称';
+    if (form.llm_provider === 'deepseek' && !form.deepseek_api_key.trim()) return '请输入 DeepSeek API Key';
+    if (form.llm_provider === 'openai' && !form.openai_api_key.trim()) return '请输入 OpenAI API Key';
+    return null;
+  };
+
+  const handleSubmit = () => {
+    const err = validate();
+    if (err) { setLocalError(err); return; }
+    setLocalError('');
+    createMutation.mutate(form);
+  };
+
+  const error = localError || (createMutation.isError ? (createMutation.error as Error).message : '');
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-96" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-4">新建 Agent</h3>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[28rem] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-1">创建 Agent</h3>
+        <p className="text-xs text-gray-500 mb-4">创建一个新的机器人实例，需要提供 QQ Bot 凭据和 LLM API Key。</p>
+
         <div className="space-y-3">
-          <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
-                 placeholder="ID (唯一标识)" value={form.id}
-                 onChange={e => setForm({...form, id: e.target.value})} />
-          <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
-                 placeholder="名称" value={form.name}
-                 onChange={e => setForm({...form, name: e.target.value})} />
-          <select className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
-                  value={form.platform} onChange={e => setForm({...form, platform: e.target.value})}>
-            <option value="qq">QQ</option>
-          </select>
+          {/* ── 基本信息 ────────────────────────────────── */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Agent ID <span className="text-red-400">*</span></label>
+            <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                   placeholder="例如 my-bot-01" value={form.id}
+                   onChange={e => setForm({...form, id: e.target.value})} />
+            <p className="text-xs text-gray-600 mt-0.5">机器标识，仅支持英文、数字、连字符和下划线</p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">名称 <span className="text-red-400">*</span></label>
+            <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                   placeholder="例如 绯英" value={form.name}
+                   onChange={e => setForm({...form, name: e.target.value})} />
+            <p className="text-xs text-gray-600 mt-0.5">显示名称，也会作为机器人的默认昵称</p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">平台</label>
+            <select className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                    value={form.platform} onChange={e => setForm({...form, platform: e.target.value})}>
+              <option value="qq">QQ</option>
+            </select>
+          </div>
+
+          {/* ── LLM 配置 ────────────────────────────────── */}
+          <div className="border-t border-gray-800 pt-3 mt-2">
+            <h4 className="text-sm font-medium mb-2">LLM 配置</h4>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">LLM Provider</label>
+                <select className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                        value={form.llm_provider} onChange={e => setForm({...form, llm_provider: e.target.value})}>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+              </div>
+
+              {form.llm_provider === 'deepseek' ? (
+                <>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">DeepSeek API Key <span className="text-red-400">*</span></label>
+                    <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                           placeholder="sk-..." value={form.deepseek_api_key}
+                           onChange={e => setForm({...form, deepseek_api_key: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Model</label>
+                    <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                           placeholder="deepseek-chat" value={form.deepseek_model}
+                           onChange={e => setForm({...form, deepseek_model: e.target.value})} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">OpenAI API Key <span className="text-red-400">*</span></label>
+                    <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                           placeholder="sk-..." value={form.openai_api_key}
+                           onChange={e => setForm({...form, openai_api_key: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Model</label>
+                    <input className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                           placeholder="gpt-4o" value={form.openai_model}
+                           onChange={e => setForm({...form, openai_model: e.target.value})} />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── 说明 ──────────────────────────────────── */}
+          <p className="text-xs text-gray-600 bg-gray-800/50 rounded p-2">
+            API Key 由您自己提供，本系统不负责提供免费算力。
+            DeepSeek 可在 <a href="https://platform.deepseek.com" className="text-indigo-400" target="_blank" rel="noopener">platform.deepseek.com</a> 获取，
+            OpenAI 可在 <a href="https://platform.openai.com" className="text-indigo-400" target="_blank" rel="noopener">platform.openai.com</a> 获取。
+          </p>
         </div>
+
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200">取消</button>
           <button
-            onClick={() => createMutation.mutate(form)}
-            disabled={!form.id || createMutation.isPending}
+            onClick={handleSubmit}
+            disabled={createMutation.isPending}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded disabled:opacity-50"
           >
-            创建
+            {createMutation.isPending ? '创建中…' : '创建 Agent'}
           </button>
         </div>
-        {createMutation.isError && (
-          <p className="text-red-400 text-xs mt-2">{(createMutation.error as Error).message}</p>
+        {error && (
+          <p className="text-red-400 text-xs mt-2">{error}</p>
         )}
       </div>
     </div>

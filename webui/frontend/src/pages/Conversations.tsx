@@ -28,7 +28,10 @@ export default function Conversations() {
                   : 'bg-gray-900 border border-gray-800 hover:bg-gray-800'
               }`}
             >
-              <div className="font-mono text-xs text-gray-400 truncate">{c.convo_id}</div>
+              <div className="text-sm text-gray-200 truncate">
+                {c.title || c.convo_id}
+              </div>
+              <div className="text-xs text-gray-500 font-mono truncate mt-0.5">{c.convo_id}</div>
               <div className="flex justify-between mt-1 text-xs text-gray-500">
                 <span>{c.message_count} 条消息</span>
                 <span>{c.last_at?.slice(0, 10)}</span>

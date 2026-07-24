@@ -114,6 +114,14 @@ boost::asio::awaitable<void> session::run_websocket_async() {
 						if (!sid.empty()) {
 							set_session_id(std::move(sid));
 						}
+						// Extract bot self-identity
+						if (rd.contains("user")) {
+							auto& u = rd["user"];
+							set_bot_identity(
+								u.value("id", ""),
+								u.value("username", ""),
+								u.value("avatar", ""));
+						}
 					} catch (...) {
 					}
 					fire_connected(*this, "OK");

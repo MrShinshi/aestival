@@ -88,6 +88,12 @@ struct session {
 		return ioc_;
 	}
 
+	// Bot self-identity (populated from READY event)
+	std::string bot_id() const;
+	std::string bot_username() const;
+	std::string bot_avatar() const;
+	void set_bot_identity(std::string id, std::string username, std::string avatar);
+
 	void set_access_token(std::string tok);
 	void set_gateway_url(std::string url);
 	void set_session_id(std::string id);
@@ -155,6 +161,12 @@ boost::asio::awaitable<void> token_refresh_timer_loop(int gen);
 
 	raw_event_handler raw_event_handler_;
 	raw_connect_handler raw_connect_handler_;
+
+	// Bot self-identity — populated from READY event
+	std::string bot_id_;
+	std::string bot_username_;
+	std::string bot_avatar_;
+	mutable std::mutex bot_identity_mutex_;
 };
 
 } // namespace platform::qq

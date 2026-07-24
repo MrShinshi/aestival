@@ -48,6 +48,8 @@ export interface AgentInfo {
   enabled: boolean;
   message_count: number;
   last_error?: string;
+  bot_nick?: string;
+  bot_avatar?: string;
 }
 
 export interface BotStatus {
@@ -67,10 +69,12 @@ export interface ConversationSummary {
   message_count: number;
   first_at: string;
   last_at: string;
+  title?: string;
 }
 
 export interface ConversationDetail {
   convo_id: string;
+  title?: string;
   messages: Array<{
     role: string;
     nick?: string;
@@ -99,7 +103,16 @@ export const api = {
     const r = await request<{ data: AgentInfo[] } | AgentInfo[]>('GET', '/agents');
     return Array.isArray(r) ? r : (r.data || []);
   },
-  createAgent: (cfg: { id: string; name: string; platform?: string }) =>
+  createAgent: (cfg: {
+    id: string;
+    name: string;
+    platform?: string;
+    llm_provider?: string;
+    deepseek_api_key?: string;
+    deepseek_model?: string;
+    openai_api_key?: string;
+    openai_model?: string;
+  }) =>
     request<AgentCreateResult>('POST', '/agents', cfg),
   deleteAgent: (id: string) =>
     request<AgentActionResult>('DELETE', `/agents/${id}`),

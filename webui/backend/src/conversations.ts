@@ -12,6 +12,26 @@ import { sanitizeAgentId } from './sanitize';
 // Base path for agent storage dirs
 const CONTEXTS_BASE = process.env.BOT_CONTEXTS_BASE || '/home/shinshi/aestival/bin/contexts';
 
+/** Make a convo_id human-readable when no sender nick is available. */
+function formatConvoId(convoId: string): string {
+  // c2c:<openid> → "私聊"
+  if (convoId.startsWith('c2c:')) return '私聊';
+  // group:<group_id> → "群聊"
+  if (convoId.startsWith('group:')) return '群聊';
+  // guild:<guild_id>:<channel_id> → "频道"
+  if (convoId.startsWith('guild:') || convoId.startsWith('dm:')) return '频道';
+  return convoId;
+}
+
+/** Ensure a string is safe for JSON serialisation. */
+function safeUtf8(s: string): string {
+  // better-sqlite3 returns strings from TEXT columns.  If the database
+  // contains bytes that aren't valid UTF-8, sqlite3_column_text may
+  // produce a string with embedded NULs or invalid code points.
+  // Remove NUL bytes and strip lone surrogates.
+  return s.replace(/\0/g, '').replace(/[\uD800-\uDFFF]/g, '');
+}
+
 function openDb(agentId: string): Database.Database | null {
   // For now, each agent DB is at contexts/{agentId}/conversations.db
   // or the legacy contexts/conversations.db for "default" agent
@@ -42,11 +62,18 @@ export function setupConversations(app: Express) {
       }
 
       try {
+        // Fetch conversation summaries with a human-friendly title derived
+        // from the first user message's sender nick (or the convo_id itself).
         const stmt = db.prepare(`
-          SELECT convo_id, COUNT(*) as msg_count,
-                 MIN(created_at) as first_at, MAX(created_at) as last_at
-          FROM messages
-          GROUP BY convo_id
+          SELECT m.convo_id,
+                 COUNT(*) as msg_count,
+                 MIN(m.created_at) as first_at,
+                 MAX(m.created_at) as last_at,
+                 (SELECT m2.nick FROM messages m2
+                  WHERE m2.convo_id = m.convo_id AND m2.role = 'user'
+                  ORDER BY m2.created_at LIMIT 1) as title
+          FROM messages m
+          GROUP BY m.convo_id
           ORDER BY last_at DESC
           LIMIT ?
         `);
@@ -57,6 +84,7 @@ export function setupConversations(app: Express) {
           message_count: r.msg_count,
           first_at: new Date(r.first_at).toISOString(),
           last_at: new Date(r.last_at).toISOString(),
+          title: r.title || formatConvoId(r.convo_id),
         }));
 
         res.json({ conversations });
@@ -97,12 +125,16 @@ export function setupConversations(app: Express) {
         const messages = rows.map((r: any) => ({
           role: r.role,
           nick: r.nick || undefined,
-          content: r.content,
+          content: safeUtf8(r.content),
           tool_calls: r.tool_calls_json ? JSON.parse(r.tool_calls_json) : undefined,
           created_at: new Date(r.created_at).toISOString(),
         }));
 
-        res.json({ convo_id: convoId, messages });
+        // Derive a title from the first user message's nick or the convo_id format.
+        const firstUser = (rows as any[]).find((r: any) => r.role === 'user');
+        const title = firstUser?.nick || formatConvoId(convoId);
+
+        res.json({ convo_id: convoId, title, messages });
       } finally {
         db.close();
       }

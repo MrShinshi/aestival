@@ -370,7 +370,7 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 
 	// ── Connect handler ────────────────────────────────────────────────
 	auto* inst_ptr = &inst;
-	sess->on_connect([inst_ptr, id = cfg.id](bool connected, std::string_view reason) {
+	sess->on_connect([inst_ptr, sess_ptr = sess.get(), id = cfg.id](bool connected, std::string_view reason) {
 		std::ostringstream s;
 		s << "[agent:" << id << "] " << (connected ? "connected" : "disconnected") << ": " << reason;
 		if (connected) {
@@ -378,6 +378,9 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 			std::lock_guard<std::mutex> lk(inst_ptr->mutex);
 			inst_ptr->status = agent_status::running;
 			inst_ptr->metrics.started_at = std::chrono::system_clock::now();
+			// Capture bot self-identity from QQ READY event
+			inst_ptr->bot_nick = sess_ptr->bot_username();
+			inst_ptr->bot_avatar = sess_ptr->bot_avatar();
 		} else {
 			client::log::warn(s.str());
 		}

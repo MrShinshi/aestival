@@ -75,7 +75,11 @@ struct agent_instance {
 	agent_status status = agent_status::stopped;
 	agent_metrics metrics;
 
-	mutable std::mutex mutex; // protects status + metrics.last_error
+	// Bot self-identity — populated from QQ READY event
+	std::string bot_nick;
+	std::string bot_avatar;
+
+	mutable std::mutex mutex; // protects status, metrics.last_error, bot_nick, bot_avatar
 
 	// Lifecycle flag: shared_ptr held by the instance, weak_ptr captured by
 	// the delayed notification thread in launch_agent().  When the instance

@@ -6,17 +6,59 @@ on:
   pull_request:
     branches: [master, main]
 
-# Prevent concurrent deploys from racing each other.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: false  # let every push finish deploying; never leave mixed state
-
 jobs:
-  # ─── C++ builds (full matrix, all branches + PRs) ──────────────────────
+  # ─── Detect which subsystems changed ─────────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    # PRs always run the full matrix (safety net before merge).
+    # On branch pushes we skip unaffected jobs to save CI minutes.
+    outputs:
+      cpp: ${{ steps.filter.outputs.cpp }}
+      webui: ${{ steps.filter.outputs.webui }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed so dorny/paths-filter can diff against parent commit
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # When a filter matches no changed files its output is 'false'.
+          # PRs: always set both to 'true' so the full matrix runs.
+          # Pushes: only the affected subsystem(s) build.
+          predicate-quantifier: 'every'
+          filters: |
+            cpp:
+              - 'app/**'
+              - 'core/**'
+              - 'platform/**'
+              - 'CMakeLists.txt'
+              - 'vcpkg.json'
+              - 'cmake/**'
+              - '.github/workflows/ci.yml'
+            webui:
+              - 'webui/**'
+              - '.github/workflows/ci.yml'
+
+  # ─── C++ builds (full matrix, selective on push, always on PR) ───────────
   cpp-build:
     name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.build_type }}
+    needs: changes
+    if: |
+      github.event_name == 'pull_request' ||
+      needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    # Per-job concurrency so webui and cpp-build don't cancel each other.
+    concurrency:
+      group: ci-${{ github.ref }}-cpp
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -217,10 +259,17 @@ jobs:
   # ─── Web UI: build + deploy (shinshi only, starts immediately) ──────────
   webui:
     name: Web UI · build & deploy
+    needs: changes
+    if: |
+      github.event_name == 'push' &&
+      github.ref_name == 'shinshi' &&
+      needs.changes.outputs.webui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # No 'needs' — web UI has zero dependency on C++ builds.
-    if: github.event_name == 'push' && github.ref_name == 'shinshi'
+
+    concurrency:
+      group: ci-${{ github.ref }}-webui
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4

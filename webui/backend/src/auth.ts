@@ -14,6 +14,15 @@ import { Express, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from './config';
 import { getUserById, getLinkedAccounts, mergeAccounts, unlinkAccount } from './accounts';
+import {
+  registerWithPassword,
+  loginWithPassword,
+  setPassword,
+  hashPassword,
+  hasPassword,
+  validateUsername,
+  validatePassword,
+} from './credentials';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +145,7 @@ export function setupAuth(app: Express): void {
       }) as SessionUser;
 
       const linkedAccounts = getLinkedAccounts(payload.sub);
+      const userHasPassword = hasPassword(payload.sub);
 
       res.json({
         authenticated: true,
@@ -150,6 +160,7 @@ export function setupAuth(app: Express): void {
           provider_username: a.provider_username,
           created_at: a.created_at,
         })),
+        has_password: userHasPassword,
       });
     } catch {
       res.json({ authenticated: false });
@@ -164,6 +175,81 @@ export function setupAuth(app: Express): void {
   app.get('/api/ui/auth/logout', (_req: Request, res: Response) => {
     clearAuthCookie(res);
     res.redirect('/login');
+  });
+
+  // ── Credential auth routes (public) ────────────────────────────────────
+
+  /**
+   * POST /api/ui/auth/register
+   *
+   * Create a new account with a username and password.
+   * On success the session cookie is set — the user is logged in
+   * immediately after registration.
+   */
+  app.post('/api/ui/auth/register', async (req: Request, res: Response) => {
+    const { username, password } = req.body || {};
+
+    const nameErr = validateUsername(username);
+    if (nameErr) {
+      res.status(400).json({ error: nameErr });
+      return;
+    }
+    const passErr = validatePassword(password);
+    if (passErr) {
+      res.status(400).json({ error: passErr });
+      return;
+    }
+
+    try {
+      const user = await registerWithPassword(username, password);
+      const token = signSession(user);
+      setAuthCookie(res, token);
+      res.status(201).json({
+        success: true,
+        user: { id: user.id, username: user.username, avatar_url: user.avatar_url },
+      });
+    } catch (err: any) {
+      if (err.message === '用户名已被占用') {
+        res.status(409).json({ error: err.message });
+      } else {
+        console.error('[register]', err);
+        res.status(500).json({ error: '注册失败，请稍后重试' });
+      }
+    }
+  });
+
+  /**
+   * POST /api/ui/auth/login
+   *
+   * Authenticate with username + password.  Returns a session cookie
+   * on success.  Does not distinguish between "wrong username" and
+   * "wrong password" to prevent user enumeration.
+   */
+  app.post('/api/ui/auth/login', async (req: Request, res: Response) => {
+    const { username, password } = req.body || {};
+
+    if (!username || !password) {
+      res.status(400).json({ error: '用户名和密码不能为空' });
+      return;
+    }
+
+    try {
+      const user = await loginWithPassword(username, password);
+      if (!user) {
+        res.status(401).json({ error: '用户名或密码错误' });
+        return;
+      }
+
+      const token = signSession(user);
+      setAuthCookie(res, token);
+      res.json({
+        success: true,
+        user: { id: user.id, username: user.username, avatar_url: user.avatar_url },
+      });
+    } catch (err: any) {
+      console.error('[login]', err);
+      res.status(500).json({ error: '登录失败，请稍后重试' });
+    }
   });
 
   // ── Protected routes ──────────────────────────────────────────────────
@@ -226,6 +312,33 @@ export function setupAuth(app: Express): void {
       res.json({ unlinked: true, provider });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'unlink failed' });
+    }
+  });
+
+  /**
+   * POST /api/ui/auth/set-password
+   *
+   * Set or change the password for the currently authenticated user.
+   * Works for OAuth-only users (adding a password) and credential users
+   * (changing their existing password).
+   */
+  app.post('/api/ui/auth/set-password', requireAuth, async (req: Request, res: Response) => {
+    const user = (req as any).user as SessionUser;
+    const { password } = req.body || {};
+
+    const passErr = validatePassword(password);
+    if (passErr) {
+      res.status(400).json({ error: passErr });
+      return;
+    }
+
+    try {
+      const hash = await hashPassword(password);
+      setPassword(user.sub, hash);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[set-password]', err);
+      res.status(500).json({ error: '设置密码失败，请稍后重试' });
     }
   });
 }

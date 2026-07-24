@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
@@ -17,6 +18,7 @@ export default function App() {
       <Routes>
         {/* Public routes — no sidebar, no auth guard */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Protected routes — require authentication */}

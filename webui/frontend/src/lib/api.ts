@@ -119,5 +119,24 @@ export const api = {
     request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}`),
 };
 
+// ── Auth API (credential-based) ─────────────────────────────────────────────
+//
+// Note: the auth context in auth.tsx uses raw fetch() for login/register
+// to avoid the 401 auto-redirect in request<T>().  These typed wrappers
+// are exported for any code that needs a direct call with error handling.
+
+export const auth = {
+  login: (username: string, password: string) =>
+    request<{ success: boolean; user: { id: string; username: string; avatar_url: string } }>(
+      'POST', '/auth/login', { username, password },
+    ),
+  register: (username: string, password: string) =>
+    request<{ success: boolean; user: { id: string; username: string; avatar_url: string } }>(
+      'POST', '/auth/register', { username, password },
+    ),
+  setPassword: (password: string) =>
+    request<{ success: boolean }>('POST', '/auth/set-password', { password }),
+};
+
 /** Current app version — keep in sync with package.json. */
 export const APP_VERSION = '1.0.0';

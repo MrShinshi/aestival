@@ -52,6 +52,12 @@ export function getAuthDb(): Database.Database {
       UNIQUE(provider, provider_user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS credentials (
+      user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      password_hash TEXT NOT NULL,
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_oauth_user
       ON oauth_accounts(user_id);
     CREATE INDEX IF NOT EXISTS idx_oauth_provider_user

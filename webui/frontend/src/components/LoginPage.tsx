@@ -1,12 +1,13 @@
 /**
- * Login page with GitHub and QQ OAuth buttons.
+ * Login page with credential form and GitHub/QQ OAuth buttons.
  *
  * All OAuth flows are server-side.  The browser never makes direct API
  * calls to GitHub — our server handles token exchange + user profile
  * fetch, avoiding GFW issues.
  */
 
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Navigate } from 'react-router-dom';
 import { Github } from 'lucide-react';
@@ -24,14 +25,20 @@ function QQIcon({ size = 20 }: { size?: number }) {
 // ── Login page ──────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, loginWithCredentials } = useAuth();
   const [searchParams] = useSearchParams();
+
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   if (!isLoading && isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
-  const error = searchParams.get('error');
+  const oauthError = searchParams.get('error');
+  const displayError = formError || (oauthError ? '登录失败，请重试。' : '');
 
   if (isLoading) {
     return (
@@ -41,19 +48,79 @@ export default function LoginPage() {
     );
   }
 
+  const handleCredentialLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !password) return;
+    setFormError('');
+    setSubmitting(true);
+    const result = await loginWithCredentials(username.trim(), password);
+    setSubmitting(false);
+    if (!result.success) {
+      setFormError(result.error || '登录失败');
+    }
+    // On success, isAuthenticated becomes true → Navigate redirects to /
+  };
+
   return (
-    <div className="flex items-center justify-center h-screen bg-[#0f0d1e]">
-      <div className="w-full max-w-sm">
+    <div className="flex items-center justify-center min-h-screen bg-[#0f0d1e]">
+      <div className="w-full max-w-sm px-4">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-indigo-400">绯英管理</h1>
           <p className="text-sm text-gray-500 mt-1">aestival dashboard</p>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-3">
-          <p className="text-sm text-gray-400 text-center mb-4">
-            选择登录方式
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+          {/* ── Credential login form ─────────────────────────────── */}
+          <form onSubmit={handleCredentialLogin} className="space-y-3">
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="用户名"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded
+                         text-sm text-gray-200 placeholder-gray-500
+                         focus:outline-none focus:border-indigo-500 transition-colors"
+              autoComplete="username"
+              disabled={submitting}
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="密码"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded
+                         text-sm text-gray-200 placeholder-gray-500
+                         focus:outline-none focus:border-indigo-500 transition-colors"
+              autoComplete="current-password"
+              disabled={submitting}
+            />
+            <button
+              type="submit"
+              disabled={submitting || !username.trim() || !password}
+              className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700
+                         disabled:opacity-50 disabled:cursor-not-allowed
+                         rounded text-sm font-medium transition-colors text-white"
+            >
+              {submitting ? '登录中…' : '登录'}
+            </button>
+          </form>
+
+          {/* ── Register link ─────────────────────────────────────── */}
+          <p className="text-center text-xs text-gray-500">
+            还没有账号？
+            <Link to="/register" className="text-indigo-400 hover:text-indigo-300 ml-1 transition-colors">
+              立即注册
+            </Link>
           </p>
 
+          {/* ── Divider ───────────────────────────────────────────── */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-800" />
+            <span className="text-xs text-gray-600">或使用第三方登录</span>
+            <div className="flex-1 h-px bg-gray-800" />
+          </div>
+
+          {/* ── OAuth buttons ─────────────────────────────────────── */}
           <a
             href="/api/ui/auth/github"
             className="flex items-center justify-center gap-3 w-full px-4 py-2.5
@@ -76,14 +143,14 @@ export default function LoginPage() {
             使用 QQ 登录
           </a>
 
-          <p className="text-xs text-gray-600 text-center pt-2">
+          <p className="text-xs text-gray-600 text-center pt-1">
             登录后可关联多个平台账号
           </p>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="mt-4 p-3 bg-red-900/30 border border-red-800/50 rounded text-sm text-red-400">
-            登录失败，请重试。
+            {displayError}
           </div>
         )}
       </div>

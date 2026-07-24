@@ -13,6 +13,7 @@
 
 import crypto from 'crypto';
 import { getAuthDb } from './db';
+import { hasPassword } from './credentials';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -325,9 +326,14 @@ export function unlinkAccount(userId: string, provider: string): void {
   const db = getAuthDb();
 
   const linked = getLinkedAccounts(userId);
-  if (linked.length <= 1) {
+  const credExists = hasPassword(userId);
+
+  // After unlinking, at least one login method must remain.
+  // A "login method" is either an OAuth account or a password.
+  const remainingAfterUnlink = linked.length - 1;
+  if (remainingAfterUnlink === 0 && !credExists) {
     throw new Error(
-      'Cannot unlink the only login method. Add another platform first.',
+      'Cannot unlink the only login method. Add another platform or set a password first.',
     );
   }
 

@@ -23,7 +23,6 @@ jobs:
       cpp: ${{ steps.detect.outputs.cpp }}
       webui: ${{ steps.detect.outputs.webui }}
       backend_deps: ${{ steps.detect.outputs.backend_deps }}
-      cpp_matrix: ${{ steps.detect.outputs.cpp_matrix }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,20 +33,16 @@ jobs:
         id: detect
         shell: bash
         run: |
-          MATRIX_PR='{"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Debug"},{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"windows-latest","compiler":"clang-cl","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}'
-          MATRIX_PUSH='{"include":[{"os":"windows-latest","compiler":"msvc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"gcc","build_type":"Release"},{"os":"ubuntu-latest","compiler":"clang","build_type":"Release"},{"os":"macos-latest","compiler":"apple-clang","build_type":"Release"}]}'
-
           # PR: always run everything.
           if [ '${{ github.event_name }}' = 'pull_request' ]; then
-            echo "cpp=true"           >> "$GITHUB_OUTPUT"
-            echo "webui=true"         >> "$GITHUB_OUTPUT"
-            echo "backend_deps=true"  >> "$GITHUB_OUTPUT"
-            echo "cpp_matrix=$MATRIX_PR" >> "$GITHUB_OUTPUT"
-            echo ':: PR — running full matrix'
+            echo 'cpp=true'           >> "$GITHUB_OUTPUT"
+            echo 'webui=true'         >> "$GITHUB_OUTPUT"
+            echo 'backend_deps=true'  >> "$GITHUB_OUTPUT"
+            echo ':: PR — running full build'
             exit 0
           fi
 
-          # Push: diff the pushed commits to see what actually changed.
+          # Push: diff against the previous commit to skip unaffected jobs.
           CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
           echo ':: changed files:'
           echo "$CHANGED" | sed 's/^/  /'
@@ -59,10 +54,9 @@ jobs:
           deps=$(has '^webui/backend/package-lock\.json$')
 
           echo ":: cpp=$cpp  webui=$webui  deps=$deps"
-          echo "cpp=${cpp}"                   >> "$GITHUB_OUTPUT"
-          echo "webui=${webui}"               >> "$GITHUB_OUTPUT"
-          echo "backend_deps=${deps}"         >> "$GITHUB_OUTPUT"
-          echo "cpp_matrix=$MATRIX_PUSH"      >> "$GITHUB_OUTPUT"
+          echo "cpp=${cpp}"           >> "$GITHUB_OUTPUT"
+          echo "webui=${webui}"       >> "$GITHUB_OUTPUT"
+          echo "backend_deps=${deps}" >> "$GITHUB_OUTPUT"
 
   # ─── C++ builds (full matrix, selective on push, always on PR) ───────────
   cpp-build:
@@ -76,7 +70,20 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.changes.outputs.cpp_matrix) }}
+      matrix:
+        include:
+          - os: windows-latest
+            compiler: msvc
+            build_type: Release
+          - os: ubuntu-latest
+            compiler: gcc
+            build_type: Release
+          - os: ubuntu-latest
+            compiler: clang
+            build_type: Release
+          - os: macos-latest
+            compiler: apple-clang
+            build_type: Release
 
     steps:
       - uses: actions/checkout@v4

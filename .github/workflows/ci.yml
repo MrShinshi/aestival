@@ -15,7 +15,7 @@ concurrency:
 jobs:
   # ─── Detect which subsystems changed ─────────────────────────────────────
   changes:
-    name: Detect changes
+    name: analyze changes
     runs-on: ubuntu-latest
     timeout-minutes: 1
 
@@ -109,7 +109,18 @@ jobs:
           echo "CC=gcc-14" >> $GITHUB_ENV
           echo "CXX=g++-14" >> $GITHUB_ENV
 
-      - name: Cache vcpkg
+      # ── vcpkg dependency cache ────────────────────────────────────────
+      #
+      # Three-tier caching so only truly-new work pays the full cost:
+      #   1. installed/  — final built packages (restored → configure is instant)
+      #   2. downloads/  — source tarballs (avoids re-fetching Boost etc.)
+      #   3. buildtrees/ — intermediate objects (avoids recompiling deps)
+      #
+      # When vcpkg.json changes → tier 1 misses → vcpkg rebuilds deps.
+      # Tiers 2+3 make that rebuild MUCH faster (no download, no recompile
+      # of unchanged packages).  Without them every cache miss means
+      # re-downloading AND recompiling ALL of Boost on Windows — 20+ min.
+      - name: Cache vcpkg installed
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/build/vcpkg_installed
@@ -118,42 +129,58 @@ jobs:
             vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-
             vcpkg-${{ runner.os }}-${{ matrix.compiler }}-
 
+      - name: Cache vcpkg downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.vcpkg-cache/downloads
+          key: vcpkg-dl-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-dl-${{ runner.os }}-
+
+      # ── CMake download cache ────────────────────────────────────────────
+      #
+      # CMake 4.3.3 zip is ~40 MB; downloading it on 6×Windows runs per
+      # push adds up.  Cache the expanded directory keyed by version.
+      - name: Cache CMake
+        id: cache-cmake
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cmake-cache
+          key: cmake-4.3.3-${{ runner.os }}
+
       - name: Install CMake 4.3.3 (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = '4.3.3'
-          $url = "https://github.com/Kitware/CMake/releases/download/v$version/cmake-$version-windows-x86_64.zip"
-          $zip = Join-Path $env:RUNNER_TEMP "cmake-$version-windows-x86_64.zip"
-          $root = Join-Path $env:RUNNER_TEMP "cmake-$version"
-          Invoke-WebRequest -Uri $url -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $root -Force
-          "$root\cmake-$version-windows-x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $cache = Join-Path $env:GITHUB_WORKSPACE .cmake-cache\cmake-4.3.3-windows-x86_64
+          if (-not (Test-Path "$cache\bin\cmake.exe")) {
+            $url = 'https://github.com/Kitware/CMake/releases/download/v4.3.3/cmake-4.3.3-windows-x86_64.zip'
+            $zip = Join-Path $env:RUNNER_TEMP cmake-4.3.3-windows-x86_64.zip
+            Invoke-WebRequest -Uri $url -OutFile $zip
+            New-Item -ItemType Directory -Force -Path (Split-Path $cache -Parent)
+            Expand-Archive -Path $zip -DestinationPath (Split-Path $cache -Parent) -Force
+            Remove-Item $zip
+          }
+          echo "$cache\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install CMake 4.3.3 (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          version=4.3.3
           case "${{ runner.os }}" in
-            Linux)
-              archive="cmake-$version-linux-x86_64.tar.gz"
-              dir="cmake-$version-linux-x86_64"
-              ;;
-            macOS)
-              archive="cmake-$version-macos-universal.tar.gz"
-              dir="cmake-$version-macos-universal"
-              ;;
-            *)
-              echo "Unsupported runner.os=${{ runner.os }}"
-              exit 1
-              ;;
+            Linux)  archive=cmake-4.3.3-linux-x86_64 ;;
+            macOS)  archive=cmake-4.3.3-macos-universal ;;
           esac
-          url="https://github.com/Kitware/CMake/releases/download/v$version/$archive"
-          curl -fsSL "$url" -o "$RUNNER_TEMP/$archive"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/$dir/bin" >> "$GITHUB_PATH"
+          root="$GITHUB_WORKSPACE/.cmake-cache/$archive"
+          if [ ! -x "$root/bin/cmake" ]; then
+            url="https://github.com/Kitware/CMake/releases/download/v4.3.3/$archive.tar.gz"
+            tarball="$RUNNER_TEMP/$archive.tar.gz"
+            curl -fsSL "$url" -o "$tarball"
+            mkdir -p "$(dirname "$root")"
+            tar -xzf "$tarball" -C "$(dirname "$root")"
+            rm "$tarball"
+          fi
+          echo "$root/bin" >> "$GITHUB_PATH"
 
       - name: Verify CMake
         shell: bash
@@ -171,6 +198,10 @@ jobs:
               git -C "$VCPKG_INSTALLATION_ROOT" checkout -B master FETCH_HEAD
             fi
           fi
+          # Point vcpkg to the persistent downloads cache so even when the
+          # installed/ cache misses, we skip re-downloading Boost etc.
+          mkdir -p "$GITHUB_WORKSPACE/.vcpkg-cache/downloads"
+          printf 'VCPKG_DOWNLOADS=%s/.vcpkg-cache/downloads\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Configure
         shell: bash
@@ -263,7 +294,7 @@ jobs:
 
   # ─── Web UI: build + deploy (shinshi only, starts immediately) ──────────
   webui:
-    name: Web UI · build & deploy
+    name: web ui · build & deploy
     needs: changes
     if: |
       github.event_name == 'push' &&

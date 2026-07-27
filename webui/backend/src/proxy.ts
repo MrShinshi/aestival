@@ -212,7 +212,8 @@ export function setupProxy(app: Express) {
   app.get('/api/ui/tokens', async (req, res) => {
     try {
       const r = await proxyToBot('GET', '/api/v1/tokens/stats', null, userToken(req));
-      res.status(r.status).json(r.data);
+      // C++ json_response wraps non-object bodies in {"status":"ok","data":...}
+      res.status(r.status).json(r.data?.data || r.data);
     } catch (err: any) {
       internalError(res, err, 'GET /tokens');
     }

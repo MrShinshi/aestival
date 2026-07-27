@@ -33,6 +33,9 @@ struct global_config;
 //   POST /api/v1/agents/:id/start
 //   POST /api/v1/agents/:id/stop
 //   PUT  /api/v1/agents/:id/config
+//   GET  /api/v1/metrics
+//   GET  /api/v1/agents/:id/metrics
+//   GET  /api/v1/tokens/stats
 //   GET  /api/v1/logs?level=...&limit=...
 //   GET  /api/v1/conversations?agent_id=...
 //   GET  /api/v1/conversations/:id

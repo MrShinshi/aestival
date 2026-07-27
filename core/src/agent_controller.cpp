@@ -67,8 +67,9 @@ static std::string format_display_content(client::message_event const& msg) {
 // ─── agent_controller ────────────────────────────────────────────────────
 
 client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& plugins,
-										   std::shared_ptr<model_client> llm, agent_config const& config)
-	: bot_(bot), plugins_(plugins), llm_(std::move(llm)),
+										   std::shared_ptr<model_client> llm, agent_config const& config,
+		agent_metrics& metrics)
+	: bot_(bot), plugins_(plugins), llm_(std::move(llm)), metrics_(metrics),
 	  policy_(policy_engine::config{config.max_messages_per_minute, k_policy_max_turns_per_convo,
 									config.daily_token_budget}),
 	  chat_contexts_(make_backend(config.storage_dir)), storage_dir_(config.storage_dir),
@@ -209,6 +210,8 @@ void client::agent_controller::handle_message(message_event const& message) {
 }
 
 void client::agent_controller::process_agent_message(message_event const& message) {
+	metrics_.message_count.fetch_add(1);
+	metrics_.last_message_at = std::chrono::system_clock::now();
 	auto const t_total = std::chrono::steady_clock::now();
 	std::string const cid = [&] {
 		auto id = actor_id_of(message);
@@ -433,5 +436,7 @@ void client::agent_controller::record_token_usage(nlohmann::json const& usage) {
 	if (p == 0 && c == 0)
 		return;
 	chat_contexts_.record_token_usage(llm_->model_name(), p, c);
+	metrics_.prompt_tokens.fetch_add(p);
+	metrics_.completion_tokens.fetch_add(c);
 	log::info("[agent] token: prompt=" + std::to_string(p) + " completion=" + std::to_string(c));
 }

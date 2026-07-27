@@ -52,10 +52,60 @@ export interface AgentInfo {
   bot_avatar?: string;
 }
 
+export interface SystemMetrics {
+  cpu_percent: number;
+  cpu_percent_recent?: number;
+  memory_rss_mb: number;
+  memory_virtual_mb?: number;
+  thread_count: number;
+  uptime_seconds: number;
+}
+
 export interface BotStatus {
   status: string;
   uptime_seconds: number;
   agent_count: number;
+  agents_running?: number;
+  agents_error?: number;
+  system?: SystemMetrics;
+}
+
+export interface AgentMetricsDetail {
+  message_count: number;
+  tool_call_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  last_message_at?: string;
+  started_at?: string;
+  uptime_seconds?: number;
+}
+
+export interface AgentWithMetrics {
+  id: string;
+  status: string;
+  metrics: AgentMetricsDetail;
+  workers?: { active_slots: number; queue_depth: number };
+  last_error?: string;
+}
+
+export interface MetricsResponse {
+  status: string;
+  system: SystemMetrics;
+  workers: { total_slots: number; total_queue_depth: number };
+  agents: AgentWithMetrics[];
+  aggregate: {
+    total_messages: number;
+    total_tool_calls: number;
+    total_prompt_tokens: number;
+    total_completion_tokens: number;
+  };
+}
+
+export interface TokenStat {
+  date: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
 }
 
 export interface LogResult {
@@ -136,6 +186,11 @@ export const api = {
     request<{ conversations: ConversationSummary[] }>('GET', `/conversations?limit=${limit || 20}`),
   conversation: (id: string, agentId?: string) =>
     request<ConversationDetail>('GET', `/conversations/${encodeURIComponent(id)}?agent=${encodeURIComponent(agentId || 'default')}`),
+
+  // Metrics & monitoring (admin only)
+  metrics: () => request<MetricsResponse>('GET', '/metrics'),
+  agentMetrics: (id: string) => request<AgentWithMetrics>('GET', `/agents/${id}/metrics`),
+  tokenStats: () => request<TokenStat[]>('GET', '/tokens'),
 };
 
 // ── Auth API (credential-based) ─────────────────────────────────────────────

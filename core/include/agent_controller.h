@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include "agent_instance.h" // agent_metrics
 #include "bot_messaging.h"
 #include "bot_config.h"   // agent_config
 #include "mcp_client.h"
@@ -24,11 +25,18 @@ namespace client {
 struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	public:
 	agent_controller(bot_messaging& bot, plugin_manager& plugins, std::shared_ptr<model_client> llm,
-					 agent_config const& config);
+					 agent_config const& config, agent_metrics& metrics);
 	~agent_controller();
 
 	void handle_message(message_event const& message);
 	void notify_startup();
+
+	// ── Introspection for management API ────────────────────────────
+	worker_pool const& workers() const { return workers_; }
+	agent_metrics const& get_metrics() const { return metrics_; }
+	std::vector<std::tuple<std::string, int, int64_t, int64_t>> get_token_stats() {
+		return chat_contexts_.get_token_stats();
+	}
 
 	// Self-iteration callback.
 	std::function<std::string(bool dry_run)> on_self_iterate;
@@ -56,6 +64,7 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	bot_messaging& bot_;
 	plugin_manager& plugins_;
 	std::shared_ptr<model_client> llm_;
+	agent_metrics& metrics_;
 	policy_engine policy_;
 	tool_registry tools_;
 	chat_context_manager chat_contexts_;

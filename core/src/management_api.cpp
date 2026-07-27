@@ -5,7 +5,9 @@
  */
 #include "stdafx.h"
 #include "management_api.h"
+#include "agent_controller.h"
 #include "agent_instance.h"
+#include "system_monitor.h"
 #include "agent_registry.h"
 #include "bot_config.h"
 #include "log.h"
@@ -113,6 +115,19 @@ struct management_api::impl {
 	mgmt::jwt_verifier jwt;
 	std::chrono::steady_clock::time_point started_at;
 
+	// Cached system resource snapshot (refreshed at most every 2 seconds)
+	mutable std::chrono::steady_clock::time_point last_snapshot_ts_{};
+	mutable system_resource_snapshot cached_snapshot_;
+	system_resource_snapshot get_system_snapshot() const {
+		auto now = std::chrono::steady_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_snapshot_ts_).count();
+		if (elapsed >= 2 || elapsed < 0) {
+			cached_snapshot_ = collect_system_resources();
+			last_snapshot_ts_ = now;
+		}
+		return cached_snapshot_;
+	}
+
 	boost::asio::io_context ioc;
 	tcp::acceptor acceptor;
 	std::thread worker;
@@ -192,6 +207,17 @@ struct management_api::impl {
 					return handle_conversation_detail(id);
 			}
 
+			// ── Metrics routes ─────────────────────────────────────────
+			if (target == "/api/v1/metrics" && method == http::verb::get)
+				return handle_metrics();
+			if (target.starts_with("/api/v1/agents/") && target.ends_with("/metrics") &&
+				method == http::verb::get)
+				return handle_agent_metrics(extract_id(target, "/metrics"));
+
+			// ── Token stats route ──────────────────────────────────────
+			if (target == "/api/v1/tokens/stats" && method == http::verb::get)
+				return handle_token_stats();
+
 			return make_response(http::status::not_found,
 								 error_response(http::status::not_found, "not found"));
 
@@ -211,6 +237,25 @@ struct management_api::impl {
 						   .count();
 		j["uptime_seconds"] = elapsed;
 		j["agent_count"] = registry.count();
+
+		// Running / error agent counts
+		int running = 0, errors = 0;
+		auto agents = registry.list_agents();
+		for (auto const& [id, st] : agents) {
+			if (st == agent_status::running) ++running;
+			else if (st == agent_status::error) ++errors;
+		}
+		j["agents_running"] = running;
+		j["agents_error"] = errors;
+
+		// System resource snapshot
+		auto sys = get_system_snapshot();
+		auto sj = nlohmann::json::object();
+		sj["cpu_percent"] = std::round(sys.cpu_percent * 10.0) / 10.0;
+		sj["memory_rss_mb"] = static_cast<int64_t>(sys.memory_rss_bytes / (1024 * 1024));
+		sj["thread_count"] = sys.thread_count;
+		j["system"] = std::move(sj);
+
 		return make_response(http::status::ok, j.dump());
 	}
 
@@ -428,6 +473,178 @@ struct management_api::impl {
 		// Stub: full conversation detail needs cross-agent SQLite query.
 		return make_response(http::status::not_implemented,
 							 error_response(http::status::not_implemented, "conversation detail not yet implemented"));
+	}
+
+	// ── metrics handler ────────────────────────────────────────────────
+
+	http::response<http::string_body> handle_metrics() {
+		auto j = nlohmann::json::object();
+		j["status"] = "ok";
+
+		// System snapshot
+		auto sys = get_system_snapshot();
+		auto sj = nlohmann::json::object();
+		sj["cpu_percent"] = std::round(sys.cpu_percent * 10.0) / 10.0;
+		sj["cpu_percent_recent"] = std::round(sys.cpu_percent_recent * 10.0) / 10.0;
+		sj["memory_rss_mb"] = static_cast<int64_t>(sys.memory_rss_bytes / (1024 * 1024));
+		sj["memory_virtual_mb"] = static_cast<int64_t>(sys.memory_virtual_bytes / (1024 * 1024));
+		sj["thread_count"] = sys.thread_count;
+		sj["uptime_seconds"] = sys.uptime_seconds;
+		j["system"] = std::move(sj);
+
+		// Worker stats
+		size_t total_slots = 0;
+		size_t total_depth = 0;
+		auto agents = registry.list_agents();
+		for (auto const& [id, st] : agents) {
+			auto* inst = registry.get_agent(id);
+			if (inst && inst->controller) {
+				total_slots += inst->controller->workers().active_slot_count();
+				total_depth += inst->controller->workers().total_queue_depth();
+			}
+		}
+		auto wj = nlohmann::json::object();
+		wj["total_slots"] = total_slots;
+		wj["total_queue_depth"] = total_depth;
+		j["workers"] = std::move(wj);
+
+		// Per-agent metrics
+		auto arr = nlohmann::json::array();
+		int64_t agg_messages = 0, agg_tool_calls = 0, agg_prompt = 0, agg_completion = 0;
+		for (auto const& [id, st] : agents) {
+			auto* inst = registry.get_agent(id);
+			if (!inst)
+				continue;
+			auto aj = nlohmann::json::object();
+			aj["id"] = id;
+			aj["status"] = std::string(to_string(st));
+			auto& m = inst->metrics;
+			auto mj = nlohmann::json::object();
+			mj["message_count"] = m.message_count.load();
+			mj["tool_call_count"] = m.tool_call_count.load();
+			mj["prompt_tokens"] = m.prompt_tokens.load();
+			mj["completion_tokens"] = m.completion_tokens.load();
+			if (m.last_message_at.time_since_epoch().count() > 0) {
+				auto tt = std::chrono::system_clock::to_time_t(m.last_message_at);
+				std::ostringstream oss;
+				oss << std::put_time(std::gmtime(&tt), "%Y-%m-%dT%H:%M:%SZ");
+				mj["last_message_at"] = oss.str();
+			}
+			if (m.started_at.time_since_epoch().count() > 0) {
+				auto tt = std::chrono::system_clock::to_time_t(m.started_at);
+				std::ostringstream oss;
+				oss << std::put_time(std::gmtime(&tt), "%Y-%m-%dT%H:%M:%SZ");
+				mj["started_at"] = oss.str();
+				mj["uptime_seconds"] = std::chrono::duration_cast<std::chrono::seconds>(
+										   std::chrono::system_clock::now() - m.started_at)
+										   .count();
+			}
+			aj["metrics"] = std::move(mj);
+			// Worker stats per agent
+			if (inst->controller) {
+				auto awj = nlohmann::json::object();
+				awj["active_slots"] = inst->controller->workers().active_slot_count();
+				awj["queue_depth"] = inst->controller->workers().total_queue_depth();
+				aj["workers"] = std::move(awj);
+			}
+			arr.push_back(std::move(aj));
+			agg_messages += m.message_count.load();
+			agg_tool_calls += m.tool_call_count.load();
+			agg_prompt += m.prompt_tokens.load();
+			agg_completion += m.completion_tokens.load();
+		}
+		j["agents"] = std::move(arr);
+
+		// Aggregate
+		auto agg = nlohmann::json::object();
+		agg["total_messages"] = agg_messages;
+		agg["total_tool_calls"] = agg_tool_calls;
+		agg["total_prompt_tokens"] = agg_prompt;
+		agg["total_completion_tokens"] = agg_completion;
+		j["aggregate"] = std::move(agg);
+
+		return make_response(http::status::ok, json_response(http::status::ok, j));
+	}
+
+	// ── per-agent metrics ──────────────────────────────────────────────
+
+	http::response<http::string_body> handle_agent_metrics(std::string const& id) {
+		auto* inst = registry.get_agent(id);
+		if (!inst)
+			throw std::runtime_error("agent not found: " + id);
+
+		auto j = nlohmann::json::object();
+		j["id"] = id;
+		j["status"] = std::string(to_string(inst->status));
+
+		auto& m = inst->metrics;
+		auto mj = nlohmann::json::object();
+		mj["message_count"] = m.message_count.load();
+		mj["tool_call_count"] = m.tool_call_count.load();
+		mj["prompt_tokens"] = m.prompt_tokens.load();
+		mj["completion_tokens"] = m.completion_tokens.load();
+		if (m.last_message_at.time_since_epoch().count() > 0) {
+			auto tt = std::chrono::system_clock::to_time_t(m.last_message_at);
+			std::ostringstream oss;
+			oss << std::put_time(std::gmtime(&tt), "%Y-%m-%dT%H:%M:%SZ");
+			mj["last_message_at"] = oss.str();
+		}
+		if (m.started_at.time_since_epoch().count() > 0) {
+			auto tt = std::chrono::system_clock::to_time_t(m.started_at);
+			std::ostringstream oss;
+			oss << std::put_time(std::gmtime(&tt), "%Y-%m-%dT%H:%M:%SZ");
+			mj["started_at"] = oss.str();
+		}
+		j["metrics"] = std::move(mj);
+
+		// Worker stats
+		if (inst->controller) {
+			auto wj = nlohmann::json::object();
+			wj["active_slots"] = inst->controller->workers().active_slot_count();
+			wj["queue_depth"] = inst->controller->workers().total_queue_depth();
+			j["workers"] = std::move(wj);
+		}
+		if (!m.last_error.empty())
+			j["last_error"] = m.last_error;
+
+		return make_response(http::status::ok, json_response(http::status::ok, j));
+	}
+
+	// ── token stats handler ────────────────────────────────────────────
+
+	http::response<http::string_body> handle_token_stats() {
+		// Aggregate token stats across all agents
+		// Map: date -> {requests, prompt, completion}
+		std::map<std::string, std::tuple<int, int64_t, int64_t>> daily;
+		auto agents = registry.list_agents();
+		for (auto const& [id, st] : agents) {
+			auto* inst = registry.get_agent(id);
+			if (!inst || !inst->controller)
+				continue;
+			auto agent_stats = inst->controller->get_token_stats();
+			for (auto const& entry : agent_stats) {
+				auto& date   = std::get<0>(entry);
+				auto requests = std::get<1>(entry);
+				auto prompt   = std::get<2>(entry);
+				auto completion = std::get<3>(entry);
+				auto& [r, p, c] = daily[date];
+				r += requests;
+				p += prompt;
+				c += completion;
+			}
+		}
+
+		auto arr = nlohmann::json::array();
+		for (auto const& [date, tup] : daily) {
+			auto [requests, prompt, completion] = tup;
+			auto entry = nlohmann::json::object();
+			entry["date"] = date;
+			entry["requests"] = requests;
+			entry["prompt_tokens"] = prompt;
+			entry["completion_tokens"] = completion;
+			arr.push_back(std::move(entry));
+		}
+		return make_response(http::status::ok, json_response(http::status::ok, arr));
 	}
 
 	// ── helpers ──────────────────────────────────────────────────────────

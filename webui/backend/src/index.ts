@@ -55,6 +55,8 @@ app.get('/api/ui/health', (_req, res) => {
 app.use('/api/ui/agents', requireAuth, requireAdmin);
 app.use('/api/ui/conversations', requireAuth, requireAdmin);
 app.use('/api/ui/logs', requireAuth, requireAdmin);
+app.use('/api/ui/metrics', requireAuth, requireAdmin);
+app.use('/api/ui/tokens', requireAuth, requireAdmin);
 
 // Status is read-only health info — any authenticated user can see it.
 app.use('/api/ui/status', requireAuth);

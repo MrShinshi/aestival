@@ -77,4 +77,19 @@ void worker_pool::worker_loop(slot& s, std::string cid) {
 	log::info("[worker] stopped: " + cid);
 }
 
+size_t worker_pool::active_slot_count() const {
+	std::lock_guard<std::mutex> lock(map_mutex_);
+	return slots_.size();
+}
+
+size_t worker_pool::total_queue_depth() const {
+	std::lock_guard<std::mutex> lock(map_mutex_);
+	size_t total = 0;
+	for (auto const& [id, s] : slots_) {
+		std::lock_guard<std::mutex> lk(s->mtx);
+		total += s->queue.size();
+	}
+	return total;
+}
+
 } // namespace client

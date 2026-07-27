@@ -177,4 +177,44 @@ export function setupProxy(app: Express) {
       internalError(res, err, 'GET /status');
     }
   });
+
+  // ── Metrics ──────────────────────────────────────────────────────────
+  app.get('/api/ui/metrics', async (req, res) => {
+    try {
+      const r = await proxyToBot('GET', '/api/v1/metrics', null, userToken(req));
+      res.status(r.status).json(r.data);
+    } catch (err: any) {
+      internalError(res, err, 'GET /metrics');
+    }
+  });
+
+  // ── Per-agent metrics ─────────────────────────────────────────────────
+  app.get('/api/ui/agents/:id/metrics', async (req, res) => {
+    const id = sanitizeAgentId(req.params.id);
+    if (id === '_invalid_') {
+      res.status(400).json({ error: 'invalid agent id' });
+      return;
+    }
+    try {
+      const r = await proxyToBot(
+        'GET',
+        `/api/v1/agents/${encodeURIComponent(id)}/metrics`,
+        null,
+        userToken(req),
+      );
+      res.status(r.status).json(r.data);
+    } catch (err: any) {
+      internalError(res, err, `GET /agents/${id}/metrics`);
+    }
+  });
+
+  // ── Token stats ───────────────────────────────────────────────────────
+  app.get('/api/ui/tokens', async (req, res) => {
+    try {
+      const r = await proxyToBot('GET', '/api/v1/tokens/stats', null, userToken(req));
+      res.status(r.status).json(r.data);
+    } catch (err: any) {
+      internalError(res, err, 'GET /tokens');
+    }
+  });
 }

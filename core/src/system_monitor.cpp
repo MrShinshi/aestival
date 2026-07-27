@@ -14,7 +14,9 @@
 #include <cstdio>
 #include <cstring>
 #include <unistd.h>
+#ifdef __linux__
 #include <sys/sysinfo.h>
+#endif
 #endif
 
 #include <chrono>
@@ -264,11 +266,13 @@ system_resource_snapshot collect_system_resources() {
 	}
 
 	// System total memory (Linux)
+#ifdef __linux__
 	{
 		struct sysinfo si;
 		if (sysinfo(&si) == 0)
 			snap.system_memory_total_bytes = static_cast<int64_t>(si.totalram) * si.mem_unit;
 	}
+#endif
 }
 
 #endif

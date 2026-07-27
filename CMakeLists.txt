@@ -189,6 +189,8 @@ set(CORE_MGMT_H   core/include/management_api.h core/include/management_auth.h)
 set(CORE_UTIL      core/src/log.cpp)
 set(CORE_UTIL_H    core/include/log.h core/include/encode_utils.h
                    core/include/console_api.h core/include/token_counter.h)
+set(CORE_SYS_MON   core/src/system_monitor.cpp)
+set(CORE_SYS_MON_H core/include/system_monitor.h)
 set(CORE_INCLUDE_H core/include/bot_messaging.h core/include/message_types.h
                    core/include/model_client.h core/include/plugin.h
                    core/include/plugin_manager.h core/include/runtime_mode.h
@@ -227,6 +229,7 @@ set(ALL_SOURCES
     ${CORE_REGISTRY}   ${CORE_REGISTRY_H}
     ${CORE_MGMT}      ${CORE_MGMT_H}
     ${CORE_UTIL}      ${CORE_UTIL_H}
+    ${CORE_SYS_MON}   ${CORE_SYS_MON_H}
     ${CORE_INCLUDE_H}
     ${PLAT_LLM}       ${PLAT_LLM_H}
     ${PLAT_HTTP}      ${PLAT_HTTP_H}
@@ -310,6 +313,7 @@ source_group("core\\registry"                           FILES ${CORE_REGISTRY}  
 source_group("core\\management"                          FILES ${CORE_MGMT}      ${CORE_MGMT_H})
 source_group("core\\include"                             FILES ${CORE_INCLUDE_H})
 source_group("core\\util"                                FILES ${CORE_UTIL}      ${CORE_UTIL_H})
+source_group("core\\system_monitor"                     FILES ${CORE_SYS_MON}   ${CORE_SYS_MON_H})
 source_group("platform\\llm"                             FILES ${PLAT_LLM}       ${PLAT_LLM_H})
 source_group("platform\\http"                            FILES ${PLAT_HTTP}      ${PLAT_HTTP_H})
 source_group("platform\\websocket"                       FILES ${PLAT_WS}        ${PLAT_WS_H})

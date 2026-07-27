@@ -73,7 +73,8 @@ int run_console_mode(client::agent_config const& config, client::plugin_manager&
 					 std::function<std::string(bool)> on_self_iterate, bool verify_tls) {
 	client::console_api con;
 	auto llm = std::shared_ptr<client::model_client>(make_model_client(config, verify_tls));
-	auto ctrl = std::make_shared<client::agent_controller>(con, plugins, llm, config);
+	static client::agent_metrics console_metrics;
+	auto ctrl = std::make_shared<client::agent_controller>(con, plugins, llm, config, console_metrics);
 	ctrl->on_self_iterate = on_self_iterate;
 
 	std::cerr << "=== aestival console mode ===\n"

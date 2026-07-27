@@ -391,8 +391,7 @@ bool client::mcp_client::perform_handshake() {
 		init_params["clientInfo"]["name"] = "aestival";
 		init_params["clientInfo"]["version"] = "1.0.0";
 
-		auto init_raw = send_request("initialize", init_params);
-		auto init_result = nlohmann::json::parse(init_raw);
+		auto init_result = send_request("initialize", init_params);
 
 		server_name_ = init_result.value("serverInfo", nlohmann::json::object()).value("name", cfg_.name);
 		server_version_ = init_result.value("serverInfo", nlohmann::json::object()).value("version", "unknown");
@@ -401,8 +400,7 @@ bool client::mcp_client::perform_handshake() {
 		send_notification("notifications/initialized", nlohmann::json::object());
 
 		// Step 3: discover tools
-		auto tools_raw = send_request("tools/list", nlohmann::json::object());
-		auto tools_result = nlohmann::json::parse(tools_raw);
+		auto tools_result = send_request("tools/list", nlohmann::json::object());
 
 		auto const& tools_arr = tools_result["tools"];
 		if (!tools_arr.is_array()) {
@@ -435,8 +433,7 @@ std::string client::mcp_client::execute_tool(std::string_view tool_name, nlohman
 		params["name"] = tool_name;
 		params["arguments"] = args;
 
-		auto raw = send_request("tools/call", params);
-		auto result = nlohmann::json::parse(raw);
+		auto result = send_request("tools/call", params);
 
 		std::string content = extract_content(result);
 		if (content.empty())

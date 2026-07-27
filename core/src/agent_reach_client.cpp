@@ -17,32 +17,6 @@
 #include <unistd.h>
 #endif
 
-namespace {
-
-// ─── shell_escape ─────────────────────────────────────────────────────────
-// Escape a string for insertion inside a double-quoted shell argument.
-static std::string shell_escape(std::string_view s) {
-	std::string r;
-	r.reserve(s.size());
-	for (char c : s) {
-		switch (c) {
-		case '"': r += "\\\""; break;
-		case '\\': r += "\\\\"; break;
-		case '$': r += "\\$"; break;
-		case '`': r += "\\`"; break;
-		case '!': r += "\\!"; break;
-		case '|': r += "\\|"; break;
-		case '&': r += "\\&"; break;
-		case '^': r += "\\^"; break;
-		case '\n':
-		case '\r': r += ' '; break;
-		default: r += c; break;
-		}
-	}
-	return r;
-}
-
-} // namespace
 
 // ─── exec ─────────────────────────────────────────────────────────────────
 // Synchronous subprocess execution with timeout watchdog.

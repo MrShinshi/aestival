@@ -88,7 +88,7 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 		for (auto const& s : *ms) {
 			if (!s.is_object())
 				continue;
-			mcp_server_config mcp;
+			client::mcp_server_config mcp;
 			mcp.name = s.value("name", "");
 			mcp.command = s.value("command", "");
 			if (auto args = s.find("args"); args != s.end() && args->is_array()) {

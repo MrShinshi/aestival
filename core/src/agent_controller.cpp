@@ -407,26 +407,31 @@ std::vector<client::chat_message> client::agent_controller::build_message_list(s
 }
 
 bool client::agent_controller::reply_to(message_event const& message, std::string_view content) {
-	return bot_.reply_to(message, content);
+	plugin_context context(bot_, message);
+	return context.reply(content);
 }
 
 std::string client::agent_controller::actor_id_of(message_event const& message) {
+	if (message.is_guild && message.is_private)
+		return "dm:" + message.guild_id + ":" + message.sender_id;
+	if (message.is_private)
+		return "c2c:" + message.user_openid;
 	if (message.is_group)
-		return "group-" + message.group_id;
-	if (message.is_channel)
-		return "channel-" + message.channel_id;
-	if (message.sender_id.empty())
-		return "global";
+		return "group:" + message.group_id;
+	if (message.is_guild)
+		return "guild:" + message.guild_id + ":" + message.channel_id;
 	return message.sender_id;
 }
 
 void client::agent_controller::record_token_usage(nlohmann::json const& usage) {
-	if (usage.is_null())
+	if (!llm_)
 		return;
-	try {
-		auto tokens = usage.value("total_tokens", 0);
-		if (tokens > 0)
-			policy_.record_tokens(tokens);
-	} catch (...) {
-	}
+	if (usage.is_discarded() || !usage.is_object())
+		return;
+	int p = usage.value("prompt_tokens", 0);
+	int c = usage.value("completion_tokens", 0);
+	if (p == 0 && c == 0)
+		return;
+	chat_contexts_.record_token_usage(llm_->model_name(), p, c);
+	log::info("[agent] token: prompt=" + std::to_string(p) + " completion=" + std::to_string(c));
 }

@@ -7,9 +7,9 @@
 
 #include "bot_messaging.h"
 #include "bot_config.h"   // agent_config
+#include "mcp_client.h"
 #include "model_client.h"
 #include "chat_context_manager.h"
-#include "agent_reach_client.h"
 #include "policy_engine.h"
 #include "plugin.h"
 #include "plugin_manager.h"
@@ -24,7 +24,7 @@ namespace client {
 struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	public:
 	agent_controller(bot_messaging& bot, plugin_manager& plugins, std::shared_ptr<model_client> llm,
-					 agent_config const& config, std::shared_ptr<agent_reach_client> reach);
+					 agent_config const& config);
 	~agent_controller();
 
 	void handle_message(message_event const& message);
@@ -39,15 +39,6 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 
 	// LLM-driven tool-using loop.
 	void tool_loop(std::vector<chat_message>& messages, std::string const& convo_id);
-
-	// Build the full tools JSON array (shell + plugin-provided tools).
-	nlohmann::json build_tools();
-
-	// Safety: check that a shell command is in the allowed set.
-	bool is_safe_command(std::string_view cmd) const;
-
-	// Route a shell command to a dedicated parser.
-	std::string route_shell_command(std::string_view cmd) const;
 
 	// Reply helper.
 	bool reply_to(message_event const& message, std::string_view content);
@@ -65,7 +56,6 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	bot_messaging& bot_;
 	plugin_manager& plugins_;
 	std::shared_ptr<model_client> llm_;
-	std::shared_ptr<agent_reach_client> reach_;
 	policy_engine policy_;
 	tool_registry tools_;
 	chat_context_manager chat_contexts_;
@@ -79,9 +69,8 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	runtime_mode mode_ = runtime_mode::plugin;
 	std::atomic<bool> stopping_{false};
 
-	// Cached tool schemas — built once, reused across tool_loop calls.
-	nlohmann::json cached_tools_json_;
-	std::once_flag tools_cache_flag_;
+	// Active MCP clients (owned for lifecycle, tools registered in tool_registry).
+	std::vector<std::shared_ptr<mcp_client>> mcp_clients_;
 
 	static constexpr size_t kAtHintLen = 9; // length of "{AT_HINT}"
 };

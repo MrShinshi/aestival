@@ -22,7 +22,6 @@ struct agent_controller;
 struct model_client;
 struct bot_messaging;
 struct plugin_manager;
-struct agent_reach_client;
 struct chat_storage_backend;
 
 // ─── agent_status ──────────────────────────────────────────────────────────

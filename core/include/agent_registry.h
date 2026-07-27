@@ -19,7 +19,6 @@
 namespace client {
 
 struct plugin_manager;
-struct agent_reach_client;
 struct chat_storage_backend;
 
 // ─── agent_registry ────────────────────────────────────────────────────────
@@ -40,10 +39,9 @@ struct chat_storage_backend;
 struct agent_registry {
 	// ── factory ──────────────────────────────────────────────────────────
 
-	// Dependencies shared across all agents (plugins, reach client).
+	// Dependencies shared across all agents (plugins).
 	struct shared_deps {
 		plugin_manager& plugins;
-		std::shared_ptr<agent_reach_client> reach;
 		std::string config_path; // for persist()
 	};
 

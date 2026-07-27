@@ -83,6 +83,28 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 		a.claude_code_path = si->value("claude_path", a.claude_code_path);
 	}
 
+	// MCP servers
+	if (auto ms = j.find("mcp_servers"); ms != j.end() && ms->is_array()) {
+		for (auto const& s : *ms) {
+			if (!s.is_object())
+				continue;
+			mcp_server_config mcp;
+			mcp.name = s.value("name", "");
+			mcp.command = s.value("command", "");
+			if (auto args = s.find("args"); args != s.end() && args->is_array()) {
+				for (auto const& arg : *args)
+					if (arg.is_string())
+						mcp.args.push_back(arg.get<std::string>());
+			}
+			if (auto to = s.find("startup_timeout"); to != s.end() && to->is_number())
+				mcp.startup_timeout = std::chrono::seconds(to->get<int>());
+			if (auto to = s.find("call_timeout"); to != s.end() && to->is_number())
+				mcp.call_timeout = std::chrono::seconds(to->get<int>());
+			if (!mcp.name.empty() && !mcp.command.empty())
+				a.mcp_servers.push_back(std::move(mcp));
+		}
+	}
+
 	return a;
 }
 
@@ -236,6 +258,24 @@ std::string client::to_json(bot_config const& cfg) {
 			si["min_conversations"] = a.self_iterate_min_conversations;
 			si["claude_path"] = a.claude_code_path;
 			j["self_iteration"] = std::move(si);
+		}
+
+		// MCP servers
+		if (!a.mcp_servers.empty()) {
+			auto ms_arr = nlohmann::json::array();
+			for (auto const& mcp : a.mcp_servers) {
+				auto s = nlohmann::json::object();
+				s["name"] = mcp.name;
+				s["command"] = mcp.command;
+				if (!mcp.args.empty()) {
+					auto args = nlohmann::json::array();
+					for (auto const& arg : mcp.args)
+						args.push_back(arg);
+					s["args"] = std::move(args);
+				}
+				ms_arr.push_back(std::move(s));
+			}
+			j["mcp_servers"] = std::move(ms_arr);
 		}
 
 		ja.push_back(std::move(j));

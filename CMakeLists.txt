@@ -171,6 +171,8 @@ set(CORE_CONFIG    core/config/bot_config.cpp)
 set(CORE_CONFIG_H  core/config/bot_config.h)
 set(CORE_SEARCH    core/src/agent_reach_client.cpp)
 set(CORE_SEARCH_H  core/include/agent_reach_client.h core/include/agent_reach_plugin.h)
+set(CORE_MCP       core/src/mcp_client.cpp)
+set(CORE_MCP_H     core/include/mcp_client.h)
 set(CORE_CONTEXT   core/src/chat_context_manager.cpp)
 set(CORE_CONTEXT_H core/include/chat_context_manager.h core/include/chat_storage_sqlite.h)
 set(CORE_POLICY    core/src/policy_engine.cpp)
@@ -217,6 +219,7 @@ set(ALL_SOURCES
     ${CORE_AGENT}     ${CORE_AGENT_H}
     ${CORE_CONFIG}    ${CORE_CONFIG_H}
     ${CORE_SEARCH}    ${CORE_SEARCH_H}
+    ${CORE_MCP}       ${CORE_MCP_H}
     ${CORE_CONTEXT}   ${CORE_CONTEXT_H}
     ${CORE_POLICY}    ${CORE_POLICY_H}
     ${CORE_SELF_ITER} ${CORE_SELF_ITER_H}
@@ -298,6 +301,7 @@ source_group("app"                                       FILES ${APP_SOURCES}   
 source_group("core\\agent"                               FILES ${CORE_AGENT}     ${CORE_AGENT_H})
 source_group("core\\config"                              FILES ${CORE_CONFIG}    ${CORE_CONFIG_H})
 source_group("core\\search"                              FILES ${CORE_SEARCH}    ${CORE_SEARCH_H})
+source_group("core\\mcp"                                 FILES ${CORE_MCP}       ${CORE_MCP_H})
 source_group("core\\context"                             FILES ${CORE_CONTEXT}   ${CORE_CONTEXT_H})
 source_group("core\\policy"                              FILES ${CORE_POLICY}    ${CORE_POLICY_H})
 source_group("core\\self_iteration"                      FILES ${CORE_SELF_ITER} ${CORE_SELF_ITER_H})

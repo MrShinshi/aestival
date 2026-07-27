@@ -359,7 +359,7 @@ void client::agent_registry::build_agent(agent_instance& inst) {
 	auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db, cfg.workspace);
 
 	// ── Controller (shared_ptr for safe async use) ─────────────────────
-	auto ctrl = std::make_shared<agent_controller>(*adapter, deps_.plugins, llm_shared, cfg, deps_.reach);
+	auto ctrl = std::make_shared<agent_controller>(*adapter, deps_.plugins, llm_shared, cfg);
 	ctrl->on_self_iterate = client::make_si_callback(si);
 
 	// ── Wire QQ events → controller ────────────────────────────────────

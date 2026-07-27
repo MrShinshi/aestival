@@ -7,11 +7,23 @@
 
 #include "runtime_mode.h"
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace client {
+
+// ─── mcp_server_config ─────────────────────────────────────────────────────
+// Describes one MCP server instance to launch and connect to.
+
+struct mcp_server_config {
+	std::string name;					 // logical name, e.g. "mcporter"
+	std::string command;				 // executable (on PATH or absolute)
+	std::vector<std::string> args;		 // CLI arguments
+	std::chrono::seconds startup_timeout{30};
+	std::chrono::seconds call_timeout{60};
+};
 
 // ─── agent_config ──────────────────────────────────────────────────────────
 // Per-agent settings.  Each agent instance owns its platform session,
@@ -58,6 +70,9 @@ struct agent_config {
 	// ── runtime ───────────────────────────────────────────────────────
 	runtime_mode default_mode = runtime_mode::agent;
 	bool agent_reach_enabled = true;
+
+	// ── MCP servers ───────────────────────────────────────────────────
+	std::vector<mcp_server_config> mcp_servers;
 
 	// ── policy / safety ───────────────────────────────────────────────
 	int max_messages_per_minute = 10;

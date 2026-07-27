@@ -7,7 +7,6 @@
 
 #include "agent_controller.h"
 #include "agent_instance.h"
-#include "agent_reach_client.h"
 #include "agent_reach_plugin.h"
 #include "agent_registry.h"
 #include "bot_config.h"
@@ -71,11 +70,10 @@ static std::string resolve_path(std::string const& base_dir, std::string const& 
 // ── console mode ───────────────────────────────────────────────────────────
 
 int run_console_mode(client::agent_config const& config, client::plugin_manager& plugins,
-					 std::shared_ptr<client::agent_reach_client> reach_client,
 					 std::function<std::string(bool)> on_self_iterate, bool verify_tls) {
 	client::console_api con;
 	auto llm = std::shared_ptr<client::model_client>(make_model_client(config, verify_tls));
-	auto ctrl = std::make_shared<client::agent_controller>(con, plugins, llm, config, reach_client);
+	auto ctrl = std::make_shared<client::agent_controller>(con, plugins, llm, config);
 	ctrl->on_self_iterate = on_self_iterate;
 
 	std::cerr << "=== aestival console mode ===\n"
@@ -141,14 +139,11 @@ int main(int argc, char* argv[]) {
 	client::plugin_manager plugins;
 	plugins.register_plugin(std::make_shared<client::plugins::simple_test_plugin>());
 
-	auto reach = std::make_shared<client::agent_reach_client>(cfg.global.verify_tls);
-
 	// ── console mode (legacy, bypasses registry) ─────────────────────────
 	if (console_mode) {
-		// Pick the first agent config for console mode, or a default.
 		client::agent_config const& ac = cfg.agents.empty() ? client::agent_config{} : cfg.agents[0];
 		if (ac.agent_reach_enabled)
-			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>(reach));
+			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>());
 
 		auto si_db = std::make_shared<client::sqlite_backend>(ac.storage_dir + "/conversations.db");
 		client::self_iteration_config si_cfg;
@@ -159,28 +154,25 @@ int main(int argc, char* argv[]) {
 		auto si = std::make_shared<client::self_iteration_engine>(si_cfg, si_db,
 																   resolve_workspace(base, ac.workspace));
 
-		return run_console_mode(ac, plugins, reach, client::make_si_callback(si), cfg.global.verify_tls);
+		return run_console_mode(ac, plugins, client::make_si_callback(si), cfg.global.verify_tls);
 	}
 
 	// ── QQ / multi-agent mode ────────────────────────────────────────────
-	client::agent_registry::shared_deps deps{plugins, reach, resolve_path(base, "config/bot_config.json")};
+	client::agent_registry::shared_deps deps{plugins, resolve_path(base, "config/bot_config.json")};
 	client::agent_registry registry(deps);
 
-	// For each agent that has agent_reach_enabled, register the search plugin once.
-	// (agent_reach_plugin is stateless; registering it per agent is harmless.)
+	// Register agent_reach_plugin for help command if any agent has it enabled.
 	for (auto const& a : cfg.agents) {
 		if (a.agent_reach_enabled) {
-			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>(reach));
-			break; // only need to register once
+			plugins.register_plugin(std::make_shared<client::plugins::agent_reach_plugin>());
+			break;
 		}
 	}
 
 	// Handle shutdown signals.
-	// Must be a static atomic: signal handlers accept only function pointers
-	// (no captures), but a captureless lambda can access a static.
 	static std::atomic<bool> s_shutdown{false};
 	s_shutdown.store(false);
-	std::signal(SIGINT,  [](int) { s_shutdown.store(true); });
+	std::signal(SIGINT, [](int) { s_shutdown.store(true); });
 	std::signal(SIGTERM, [](int) { s_shutdown.store(true); });
 
 	registry.on_agent_startup = [](std::string_view agent_id, bool connected) {
@@ -197,7 +189,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// ── Management API (Phase 2) ─────────────────────────────────────────
+	// ── Management API ───────────────────────────────────────────────────
 	client::management_api mgmt_api(registry, cfg.global);
 	if (cfg.global.management_api_enabled && !cfg.global.jwt_secret.empty()) {
 		try {
@@ -210,9 +202,6 @@ int main(int argc, char* argv[]) {
 
 	client::log::info("=== aestival running (" + std::to_string(registry.count()) + " agents) ===");
 
-	// Main loop: poll until all agents are stopped or shutdown signal received.
-	// When the management API is enabled, the process must stay alive even
-	// with zero running agents so the Web UI can start/stop agents at will.
 	while (!s_shutdown.load()) {
 		auto agents = registry.list_agents();
 		bool any_running = false;

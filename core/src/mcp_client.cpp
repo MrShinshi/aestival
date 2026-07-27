@@ -21,7 +21,6 @@ namespace {
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 constexpr size_t kMaxToolContent = 8000;
-constexpr size_t kReadBufSize = 4096;
 
 // Truncate tool output at a UTF-8-safe boundary.
 std::string truncate_utf8(std::string_view s, size_t max_len) {

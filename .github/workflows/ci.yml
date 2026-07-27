@@ -229,6 +229,7 @@ jobs:
 
           case "${{ runner.os }}" in
             Windows)
+              GENERATOR_ARGS+=(-G Ninja)
               case "${{ matrix.compiler }}" in
                 clang-cl) GENERATOR_ARGS+=(-T ClangCL) ;;
               esac

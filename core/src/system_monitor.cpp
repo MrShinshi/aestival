@@ -163,10 +163,13 @@ system_resource_snapshot collect_system_resources() {
 	if (g_clock_ticks <= 0)
 		g_clock_ticks = sysconf(_SC_CLK_TCK);
 
-	// /proc/self/stat — format: "pid (comm) state ..."
-	// After the ')' comes: state ppid pgrp session tty_nr tpgid flags
-	//   minflt cminflt majflt cmajflt utime stime cutime cstime
-	//   priority nice num_threads itrealvalue starttime vsize rss
+	// /proc/self/stat: "pid (comm) state ..."
+	// After the ')' closing the comm field:
+	//   1 state, 2 ppid, 3 pgrp, 4 session, 5 tty_nr, 6 tpgid,
+	//   7 flags, 8 minflt, 9 cminflt, 10 majflt, 11 cmajflt,
+	//   12 utime, 13 stime, 14 cutime, 15 cstime,
+	//   16 priority, 17 nice, 18 num_threads, 19 itrealvalue,
+	//   20 starttime, 21 vsize, 22 rss
 	{
 		FILE* f = fopen("/proc/self/stat", "r");
 		if (f) {
@@ -175,36 +178,49 @@ system_resource_snapshot collect_system_resources() {
 				char const* after_comm = strrchr(line, ')');
 				if (after_comm) {
 					++after_comm;
+					char state_ch = 0;
+					int d1 = 0, d2 = 0, d3 = 0, d4 = 0, d5 = 0;
+					unsigned int flags_val = 0;
+					unsigned long m1 = 0, m2 = 0, m3 = 0, m4 = 0;
 					unsigned long long utime = 0, stime = 0, cutime = 0, cstime = 0;
+					int prio = 0, nice_val = 0;
 					long num_threads = 0;
+					unsigned int itreal = 0;
+					unsigned long long starttime = 0;
 					unsigned long long vsize = 0;
 					long rss_pages = 0;
 
 					int matched = sscanf(after_comm,
-						" %*c"                // state
-						" %*d %*d %*d %*d %*d" // ppid..tpgid
-						" %*u"                // flags
-						" %*u %*u %*u %*u"    // minflt..cmajflt
-						" %llu %llu %llu %llu" // utime, stime, cutime, cstime
-						" %*d %*d"            // priority, nice
-						" %ld"                // num_threads
-						" %*u"                // itrealvalue
-						" %*llu"              // starttime
-						" %llu"               // vsize
-						" %ld",               // rss
+						" %c %d %d %d %d %d"      // state, ppid..tpgid
+						" %u"                     // flags
+						" %lu %lu %lu %lu"        // minflt..cmajflt
+						" %llu %llu %llu %llu"    // utime, stime, cutime, cstime
+						" %d %d"                  // priority, nice
+						" %ld"                    // num_threads
+						" %u"                     // itrealvalue
+						" %llu"                   // starttime
+						" %llu"                   // vsize
+						" %ld",                   // rss
+						&state_ch,
+						&d1, &d2, &d3, &d4, &d5,
+						&flags_val,
+						&m1, &m2, &m3, &m4,
 						&utime, &stime, &cutime, &cstime,
+						&prio, &nice_val,
 						&num_threads,
+						&itreal,
+						&starttime,
 						&vsize,
 						&rss_pages);
 
-					if (matched >= 7) {
+					if (matched >= 12) {
 						snap.thread_count = num_threads;
 						snap.memory_virtual_bytes = static_cast<int64_t>(vsize);
 						snap.memory_rss_bytes = static_cast<int64_t>(rss_pages) * sysconf(_SC_PAGESIZE);
 
 						unsigned long long proc_ticks = utime + stime + cutime + cstime;
 
-						// /proc/stat for system-wide CPU
+						// /proc/stat for system-wide CPU totals
 						unsigned long long sys_total = 0;
 						FILE* fs = fopen("/proc/stat", "r");
 						if (fs) {

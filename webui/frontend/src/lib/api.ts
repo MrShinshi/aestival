@@ -190,7 +190,10 @@ export const api = {
   // Metrics & monitoring (admin only)
   metrics: () => request<MetricsResponse>('GET', '/metrics'),
   agentMetrics: (id: string) => request<AgentWithMetrics>('GET', `/agents/${id}/metrics`),
-  tokenStats: () => request<TokenStat[]>('GET', '/tokens'),
+  tokenStats: async (): Promise<TokenStat[]> => {
+    const r = await request<TokenStat[] | { data: TokenStat[] }>('GET', '/tokens');
+    return Array.isArray(r) ? r : ((r as any).data || []);
+  },
 };
 
 // ── Auth API (credential-based) ─────────────────────────────────────────────

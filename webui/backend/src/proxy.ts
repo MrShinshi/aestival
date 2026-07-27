@@ -213,7 +213,7 @@ export function setupProxy(app: Express) {
     try {
       const r = await proxyToBot('GET', '/api/v1/tokens/stats', null, userToken(req));
       // C++ json_response wraps non-object bodies in {"status":"ok","data":...}
-      res.status(r.status).json(r.data?.data || r.data);
+      res.status(r.status).json((r.data as any)?.data || r.data);
     } catch (err: any) {
       internalError(res, err, 'GET /tokens');
     }

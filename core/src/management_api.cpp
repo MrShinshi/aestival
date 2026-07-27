@@ -251,8 +251,9 @@ struct management_api::impl {
 		// System resource snapshot
 		auto sys = get_system_snapshot();
 		auto sj = nlohmann::json::object();
-		sj["cpu_percent"] = std::round(sys.cpu_percent * 10.0) / 10.0;
+		sj["cpu_percent"] = std::round(sys.cpu_percent_recent * 10.0) / 10.0;
 		sj["memory_rss_mb"] = static_cast<int64_t>(sys.memory_rss_bytes / (1024 * 1024));
+		sj["memory_total_mb"] = static_cast<int64_t>(sys.system_memory_total_bytes / (1024 * 1024));
 		sj["thread_count"] = sys.thread_count;
 		j["system"] = std::move(sj);
 

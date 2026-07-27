@@ -1,15 +1,31 @@
+/**
+ * Semi-circle gauge — shows CPU percentage or memory usage in the same visual style.
+ */
 interface CpuGaugeProps {
-  percent: number;
+  label: string;              // "CPU" or "内存"
+  percent: number;            // 0–100 fill amount
+  displayValue: string;       // main number shown, e.g. "23.5%", "512 MB"
+  subValue?: string;          // optional smaller text below, e.g. "/ 4096 MB"
+  color?: string;             // override the auto color
   size?: number;
 }
 
-export default function CpuGauge({ percent, size = 120 }: CpuGaugeProps) {
+const colorFor = (pct: number, override?: string) => {
+  if (override) return override;
+  if (pct >= 80) return 'stroke-red-400';
+  if (pct >= 50) return 'stroke-yellow-400';
+  return 'stroke-green-400';
+};
+
+export default function CpuGauge({
+  label, percent, displayValue, subValue, color, size = 120,
+}: CpuGaugeProps) {
   const clamped = Math.max(0, Math.min(100, percent));
   const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
 
-  // Arc path for a semi-circle (from -π to 0, top half)
+  // Arc path for a semi-circle (top half: from -π to 0)
   const startAngle = -Math.PI;
   const endAngle = 0;
   const fillAngle = startAngle + (endAngle - startAngle) * (clamped / 100);
@@ -18,13 +34,9 @@ export default function CpuGauge({ percent, size = 120 }: CpuGaugeProps) {
   const y1 = center + radius * Math.sin(startAngle);
   const x2 = center + radius * Math.cos(fillAngle);
   const y2 = center + radius * Math.sin(fillAngle);
-  const largeArc = fillAngle - startAngle > Math.PI ? 1 : 0;
+  const largeArc = 0;
 
-  const bgColor = 'stroke-gray-700';
-  const fillColor =
-    clamped >= 80 ? 'stroke-red-400' :
-    clamped >= 50 ? 'stroke-yellow-400' :
-    'stroke-green-400';
+  const fillStroke = colorFor(clamped, color);
 
   return (
     <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size}`}>
@@ -32,7 +44,7 @@ export default function CpuGauge({ percent, size = 120 }: CpuGaugeProps) {
       <path
         d={`M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${center + radius} ${center}`}
         fill="none"
-        className={bgColor}
+        className="stroke-gray-700"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
@@ -41,31 +53,44 @@ export default function CpuGauge({ percent, size = 120 }: CpuGaugeProps) {
         <path
           d={`M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`}
           fill="none"
-          className={fillColor}
+          className={fillStroke}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           style={{ transition: 'd 0.5s ease' }}
         />
       )}
-      {/* Percentage text */}
+      {/* Main value */}
       <text
         x={center}
-        y={center - 4}
+        y={center - 6}
         textAnchor="middle"
         className="fill-gray-100 text-lg font-bold"
-        fontSize="18"
+        fontSize="17"
       >
-        {clamped.toFixed(1)}%
+        {displayValue}
       </text>
-      <text
-        x={center}
-        y={center + 14}
-        textAnchor="middle"
-        className="fill-gray-500"
-        fontSize="10"
-      >
-        CPU
-      </text>
+      {/* Secondary line */}
+      {subValue ? (
+        <text
+          x={center}
+          y={center + 10}
+          textAnchor="middle"
+          className="fill-gray-500"
+          fontSize="10"
+        >
+          {subValue}
+        </text>
+      ) : (
+        <text
+          x={center}
+          y={center + 12}
+          textAnchor="middle"
+          className="fill-gray-500"
+          fontSize="10"
+        >
+          {label}
+        </text>
+      )}
     </svg>
   );
 }

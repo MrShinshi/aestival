@@ -56,6 +56,7 @@ export interface SystemMetrics {
   cpu_percent: number;
   cpu_percent_recent?: number;
   memory_rss_mb: number;
+  memory_total_mb?: number;
   memory_virtual_mb?: number;
   thread_count: number;
   uptime_seconds: number;

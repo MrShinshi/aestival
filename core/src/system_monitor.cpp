@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <unistd.h>
+#include <sys/sysinfo.h>
 #endif
 
 #include <chrono>
@@ -136,6 +137,12 @@ system_resource_snapshot collect_system_resources() {
 			snap.memory_rss_bytes     = static_cast<int64_t>(pmc.WorkingSetSize);
 			snap.memory_virtual_bytes = static_cast<int64_t>(pmc.PrivateUsage);
 		}
+
+		// System total memory
+		MEMORYSTATUSEX ms;
+		ms.dwLength = sizeof(ms);
+		if (GlobalMemoryStatusEx(&ms))
+			snap.system_memory_total_bytes = static_cast<int64_t>(ms.ullTotalPhys);
 	}
 
 	// Thread count
@@ -254,8 +261,15 @@ system_resource_snapshot collect_system_resources() {
 				}
 			}
 			fclose(f);
-		}
 	}
+
+	// System total memory (Linux)
+	{
+		struct sysinfo si;
+		if (sysinfo(&si) == 0)
+			snap.system_memory_total_bytes = static_cast<int64_t>(si.totalram) * si.mem_unit;
+	}
+}
 
 #endif
 

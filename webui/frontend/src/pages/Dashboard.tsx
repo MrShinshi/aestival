@@ -7,7 +7,6 @@ import {
 import { api, type AgentInfo } from '../lib/api';
 import StatCard from '../components/StatCard';
 import CpuGauge from '../components/CpuGauge';
-import MemoryBar from '../components/MemoryBar';
 import TokenChart from '../components/TokenChart';
 import AgentMetricsTable from '../components/AgentMetricsTable';
 
@@ -112,25 +111,43 @@ export default function Dashboard() {
             <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
               <h3 className="text-sm font-semibold text-gray-400 mb-3">CPU 使用率</h3>
               <div className="flex items-center justify-center">
-                <CpuGauge percent={status?.system?.cpu_percent || 0} />
+                <CpuGauge
+                  label="CPU"
+                  percent={status?.system?.cpu_percent || 0}
+                  displayValue={`${(status?.system?.cpu_percent || 0).toFixed(1)}%`}
+                />
               </div>
             </div>
             {/* Memory */}
             <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
               <h3 className="text-sm font-semibold text-gray-400 mb-3">内存使用</h3>
-              <div className="space-y-4">
-                <MemoryBar
-                  rssMb={status?.system?.memory_rss_mb || 0}
-                  virtualMb={metrics?.system?.memory_virtual_mb}
-                />
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                  <div>系统线程: <span className="text-gray-300">{status?.system?.thread_count ?? '--'}</span></div>
-                  <div>Worker 槽: <span className="text-gray-300">{metrics?.workers?.total_slots ?? '--'}</span></div>
-                  <div>队列深度: <span className="text-gray-300">{metrics?.workers?.total_queue_depth ?? '--'}</span></div>
-                  <div>Agent 线程数: <span className="text-gray-300">{agents.length > 0 ? `~${agents.length * 2}+` : '--'}</span></div>
-                </div>
+              <div className="flex items-center justify-center">
+                {(() => {
+                  const rss = status?.system?.memory_rss_mb || 0;
+                  const total = status?.system?.memory_total_mb || 0;
+                  const memPct = total > 0 ? (rss / total) * 100 : 0;
+                  const displayMb = rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
+                  const totalMb = total >= 1024 ? `${(total / 1024).toFixed(1)} GB` : total > 0 ? `${total.toFixed(0)} MB` : '';
+                  return (
+                    <CpuGauge
+                      label="内存"
+                      percent={memPct}
+                      displayValue={displayMb}
+                      subValue={totalMb ? `共 ${totalMb}` : undefined}
+                      color="stroke-cyan-400"
+                    />
+                  );
+                })()}
               </div>
             </div>
+          </div>
+
+          {/* Thread / Worker info */}
+          <div className="grid grid-cols-4 gap-2 text-xs text-gray-500">
+            <div>系统线程: <span className="text-gray-300">{status?.system?.thread_count ?? '--'}</span></div>
+            <div>Worker 槽: <span className="text-gray-300">{metrics?.workers?.total_slots ?? '--'}</span></div>
+            <div>队列深度: <span className="text-gray-300">{metrics?.workers?.total_queue_depth ?? '--'}</span></div>
+            <div>Agent 线程数: <span className="text-gray-300">{agents.length > 0 ? `~${agents.length * 2}+` : '--'}</span></div>
           </div>
 
           {/* Mini token chart (7 days) */}

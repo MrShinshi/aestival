@@ -21,6 +21,7 @@ struct system_resource_snapshot {
 	double cpu_percent_recent = 0.0; // recent CPU usage since last call (0 on first call)
 	int64_t memory_rss_bytes = 0;    // resident set size (physical RAM)
 	int64_t memory_virtual_bytes = 0; // virtual memory size
+	int64_t system_memory_total_bytes = 0; // total physical RAM on the host
 	int thread_count = 0;            // number of threads in this process
 	int64_t uptime_seconds = 0;      // process uptime (seconds since start)
 };

@@ -15,8 +15,11 @@ export interface SeriesConfig {
   color: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ChartDataPoint = Record<string, any>;
+
 interface ResourceChartProps {
-  data: Record<string, number | string | null>[];
+  data: ChartDataPoint[];
   series: SeriesConfig[];
   height?: number;
   showLegend?: boolean;

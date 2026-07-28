@@ -153,6 +153,18 @@ std::string client::agent_reach_client::exec(std::string_view cmd, std::chrono::
 // ─── command_available ────────────────────────────────────────────────────
 
 bool client::agent_reach_client::command_available(std::string_view name) {
+	// Reject names with shell metacharacters (command injection prevention).
+	// Valid tool names contain only alphanumeric, underscore, hyphen, and dot.
+	for (char c : name) {
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			  (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.')) {
+			log::warn(std::string("[agent-reach] rejected invalid command name: '") + std::string(name) + "'");
+			return false;
+		}
+	}
+	if (name.empty())
+		return false;
+
 #ifdef _WIN32
 	std::string cmd = "where ";
 	cmd += name;

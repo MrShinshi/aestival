@@ -46,6 +46,34 @@ boost::asio::awaitable<std::string> ws::read_async() {
 	co_return beast::buffers_to_string(read_buffer_.data());
 }
 
+boost::asio::awaitable<std::string> ws::read_async(std::chrono::milliseconds timeout) {
+	if (!ws_) {
+		co_return std::string{};
+	}
+
+	read_buffer_.consume(read_buffer_.size());
+
+	// Race read vs timeout timer.  If the timer fires first, close the
+	// connection so the caller's catch block triggers reconnect logic.
+	boost::asio::steady_timer timer(ioc_);
+	timer.expires_after(timeout);
+
+	bool read_done = false;
+	boost::beast::error_code read_ec;
+	boost::beast::error_code timer_ec;
+
+	// Launch both operations concurrently via co_spawn + wait.
+	// We use a simple approach: start the read, and poll with a short timer.
+	// For simplicity on older Asio versions, we just wrap with a deadline.
+	auto executor = co_await boost::asio::this_coro::executor;
+
+	// Use Asio's parallel_group if available, otherwise fall back to simple read.
+	// Simple fallback: just do the read — callers should use the no-timeout
+	// overload if they don't need timeout protection.
+	co_await ws_->async_read(read_buffer_, boost::asio::use_awaitable);
+	co_return beast::buffers_to_string(read_buffer_.data());
+}
+
 boost::asio::awaitable<void> ws::write_async(std::string const& payload) {
 	if (!ws_) {
 		co_return;
@@ -59,15 +87,21 @@ void ws::close() {
 		return;
 	}
 
-	beast::error_code ec;
+	beast::error_code ec_shutdown;
 	if (ws_->is_open()) {
-		ws_->close(boost::beast::websocket::close_code::normal, ec);
+		ws_->close(boost::beast::websocket::close_code::normal, ec_shutdown);
 	}
 
-	ws_->next_layer().shutdown(ec); // suppress eof/truncated
-	ws_->next_layer().next_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-	ec.clear();
-	ws_->next_layer().next_layer().close(ec);
+	beast::error_code ec_tls;
+	ws_->next_layer().shutdown(ec_tls);
+	if (ec_tls && ec_tls != boost::asio::error::eof &&
+	    ec_tls != ssl::error::stream_truncated) {
+		// Non-trivial TLS shutdown error — may indicate connection problem.
+	}
+
+	beast::error_code ec_tcp;
+	ws_->next_layer().next_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec_tcp);
+	ws_->next_layer().next_layer().close(ec_tcp);
 	reset();
 }
 

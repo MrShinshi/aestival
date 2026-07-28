@@ -56,14 +56,9 @@ function seedBuffer(): MetricsPoint[] {
   return pts;
 }
 
-let g_seeded: MetricsPoint[] | null = null;
-
 export function useMetricsHistory(maxPoints: number = MAX_POINTS) {
-  const [history, setHistory] = useState<MetricsPoint[]>(() => {
-    if (!g_seeded) g_seeded = seedBuffer();
-    return g_seeded;
-  });
-  const bufferRef = useRef<MetricsPoint[]>(g_seeded!);
+  const [history, setHistory] = useState<MetricsPoint[]>(() => seedBuffer());
+  const bufferRef = useRef<MetricsPoint[]>(history);
 
   useEffect(() => {
     let active = true;

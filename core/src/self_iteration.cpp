@@ -573,7 +573,7 @@ std::string self_iteration_engine::commit_changes(std::string const& summary) {
 	if (!workspace_pattern.empty() && workspace_pattern.back() != '/')
 		workspace_pattern += '/';
 
-	std::string add_cmd = "git add " + workspace_pattern + "*.md";
+	std::string add_cmd = "git add " + shell_quote(workspace_pattern + "*.md");
 	std::string result = agent_reach_client::exec(add_cmd);
 
 	if (result.find("fatal:") != std::string::npos) {

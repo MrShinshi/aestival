@@ -16,7 +16,7 @@ export interface SeriesConfig {
 }
 
 interface ResourceChartProps {
-  data: any[];
+  data: Record<string, number | string | null>[];
   series: SeriesConfig[];
   height?: number;
   showLegend?: boolean;

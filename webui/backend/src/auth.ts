@@ -34,6 +34,15 @@ export interface SessionUser {
   exp: number;
 }
 
+// Extend Express Request to carry the authenticated user.
+declare global {
+  namespace Express {
+    interface Request {
+      user?: SessionUser;
+    }
+  }
+}
+
 const SESSION_EXPIRY = '24h';
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const COOKIE_NAME = 'auth_token';
@@ -115,7 +124,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const payload = jwt.verify(token, config.jwtSecret, {
       algorithms: ['HS256'],
     }) as SessionUser;
-    (req as any).user = payload;
+    req.user = payload;
     next();
   } catch {
     clearAuthCookie(res);
@@ -128,7 +137,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
  * Must be used AFTER requireAuth — depends on req.user being set.
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const user = (req as any).user as SessionUser | undefined;
+  const user = req.user;
   if (!user) {
     res.status(401).json({ error: 'authentication required' });
     return;
@@ -288,7 +297,7 @@ export function setupAuth(app: Express): void {
    * Body: { targetUserId: string, sourceUserId: string }
    */
   app.post('/api/ui/auth/merge', requireAuth, (req: Request, res: Response) => {
-    const user = (req as any).user as SessionUser;
+    const user = req.user!;
     const { targetUserId, sourceUserId } = req.body || {};
 
     if (!targetUserId || !sourceUserId) {
@@ -320,7 +329,7 @@ export function setupAuth(app: Express): void {
    * Body: { provider: 'github' | 'qq' }
    */
   app.post('/api/ui/auth/unlink', requireAuth, (req: Request, res: Response) => {
-    const user = (req as any).user as SessionUser;
+    const user = req.user!;
     const { provider } = req.body || {};
 
     if (!provider || !['github', 'qq'].includes(provider)) {
@@ -350,7 +359,7 @@ export function setupAuth(app: Express): void {
    * (changing their existing password).
    */
   app.post('/api/ui/auth/set-password', requireAuth, async (req: Request, res: Response) => {
-    const user = (req as any).user as SessionUser;
+    const user = req.user!;
     const { password } = req.body || {};
 
     const passErr = validatePassword(password);

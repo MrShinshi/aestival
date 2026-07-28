@@ -11,6 +11,19 @@ namespace {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+// Helper: read a string from JSON, skipping "***" sentinel (redacted value).
+// Returns empty string for sentinel so the default/in-memory value is preserved.
+static std::string safe_string(nlohmann::json const& obj, char const* key,
+							   std::string const& fallback = "") {
+	auto it = obj.find(key);
+	if (it == obj.end() || !it->is_string())
+		return fallback;
+	auto const& s = it->get_ref<std::string const&>();
+	if (s == "***")
+		return fallback;
+	return s;
+}
+
 client::runtime_mode parse_mode(std::string const& value) {
 	if (value == "agent")
 		return client::runtime_mode::agent;
@@ -42,20 +55,20 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 
 	// QQ credentials
 	if (auto qq = j.find("qq"); qq != j.end() && qq->is_object()) {
-		a.qq_app_id = qq->value("app_id", "");
-		a.qq_app_secret = qq->value("app_secret", "");
+		a.qq_app_id = safe_string(*qq, "app_id");
+		a.qq_app_secret = safe_string(*qq, "app_secret");
 	}
 
 	// LLM
 	a.llm_provider = j.value("llm_provider", "deepseek");
 	if (auto ds = j.find("deepseek"); ds != j.end() && ds->is_object()) {
-		a.deepseek_api_key = ds->value("api_key", "");
+		a.deepseek_api_key = safe_string(*ds, "api_key");
 		a.deepseek_model = ds->value("model", a.deepseek_model);
-		a.deepseek_user_token = ds->value("user_token", "");
-		a.deepseek_waf_cookie = ds->value("waf_cookie", "");
+		a.deepseek_user_token = safe_string(*ds, "user_token");
+		a.deepseek_waf_cookie = safe_string(*ds, "waf_cookie");
 	}
 	if (auto oa = j.find("openai"); oa != j.end() && oa->is_object()) {
-		a.openai_api_key = oa->value("api_key", "");
+		a.openai_api_key = safe_string(*oa, "api_key");
 		a.openai_model = oa->value("model", a.openai_model);
 		a.openai_base_url = oa->value("base_url", a.openai_base_url);
 	}
@@ -129,7 +142,7 @@ client::global_config parse_global(nlohmann::json const& root) {
 	if (auto mgmt = src.find("management_api"); mgmt != src.end() && mgmt->is_object()) {
 		g.management_api_enabled = mgmt->value("enabled", false);
 		g.management_listen = mgmt->value("listen", g.management_listen);
-		g.jwt_secret = mgmt->value("jwt_secret", "");
+		g.jwt_secret = safe_string(*mgmt, "jwt_secret");
 	}
 
 	return g;
@@ -216,7 +229,7 @@ std::string client::to_json(bot_config const& cfg) {
 		{
 			auto qq = nlohmann::json::object();
 			qq["app_id"] = a.qq_app_id;
-			qq["app_secret"] = a.qq_app_secret;
+			qq["app_secret"] = a.qq_app_secret.empty() ? "" : "***";
 			j["qq"] = std::move(qq);
 		}
 
@@ -225,17 +238,17 @@ std::string client::to_json(bot_config const& cfg) {
 		// DeepSeek
 		{
 			auto ds = nlohmann::json::object();
-			ds["api_key"] = a.deepseek_api_key;
+			ds["api_key"] = a.deepseek_api_key.empty() ? "" : "***";
 			ds["model"] = a.deepseek_model;
-			ds["user_token"] = a.deepseek_user_token;
-			ds["waf_cookie"] = a.deepseek_waf_cookie;
+			ds["user_token"] = a.deepseek_user_token.empty() ? "" : "***";
+			ds["waf_cookie"] = a.deepseek_waf_cookie.empty() ? "" : "***";
 			j["deepseek"] = std::move(ds);
 		}
 
 		// OpenAI
 		{
 			auto oa = nlohmann::json::object();
-			oa["api_key"] = a.openai_api_key;
+			oa["api_key"] = a.openai_api_key.empty() ? "" : "***";
 			oa["model"] = a.openai_model;
 			oa["base_url"] = a.openai_base_url;
 			j["openai"] = std::move(oa);
@@ -305,7 +318,7 @@ std::string client::to_json(bot_config const& cfg) {
 			auto mgmt = nlohmann::json::object();
 			mgmt["enabled"] = cfg.global.management_api_enabled;
 			mgmt["listen"] = cfg.global.management_listen;
-			mgmt["jwt_secret"] = cfg.global.jwt_secret;
+			mgmt["jwt_secret"] = cfg.global.jwt_secret.empty() ? "" : "***";
 			gj["management_api"] = std::move(mgmt);
 		}
 

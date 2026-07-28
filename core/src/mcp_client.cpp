@@ -96,10 +96,16 @@ bool client::mcp_client::launch() {
 		cmd_line += std::wstring(appdata, appdata + strlen(appdata)) + L"\\npm;";
 	cmd_line += L"%PATH%\" && ";
 
-		// Inject per-server environment variables
+	// Inject per-server environment variables (escaped for cmd.exe)
 		for (auto const& [k, v] : cfg_.env) {
 			std::wstring wk(k.begin(), k.end());
-			std::wstring wv(v.begin(), v.end());
+			std::wstring wv;
+			wv.reserve(v.size() * 2);
+			for (char ch : v) {
+				if (ch == '"') wv += L"\"\"\"";
+				else if (ch == '%') wv += L"%%";
+				else wv += static_cast<wchar_t>(static_cast<unsigned char>(ch));
+			}
 			cmd_line += L"set \"" + wk + L"=" + wv + L"\" && ";
 		}
 
@@ -110,7 +116,15 @@ bool client::mcp_client::launch() {
 	}
 	for (auto const& a : cfg_.args) {
 		cmd_line += L" ";
-		std::wstring arg(a.begin(), a.end());
+		std::wstring arg;
+		arg.reserve(a.size() * 2);
+		for (char ch : a) {
+			if (ch == '"') arg += L"\"\"\"";
+			else if (ch == '&' || ch == '|' || ch == '<' || ch == '>' || ch == '^')
+				{ arg += L'^'; arg += static_cast<wchar_t>(static_cast<unsigned char>(ch)); }
+			else if (ch == '%') arg += L"%%";
+			else arg += static_cast<wchar_t>(static_cast<unsigned char>(ch));
+		}
 		cmd_line += arg;
 	}
 	cmd_line += L"\"";

@@ -199,7 +199,9 @@ export const api = {
   agentMetrics: (id: string) => request<AgentWithMetrics>('GET', `/agents/${id}/metrics`),
   tokenStats: async (): Promise<TokenStat[]> => {
     const r = await request<TokenStat[] | { data: TokenStat[] }>('GET', '/tokens');
-    return Array.isArray(r) ? r : ((r as any).data || []);
+    if (Array.isArray(r)) return r;
+    if (r && typeof r === 'object' && 'data' in r && Array.isArray(r.data)) return r.data;
+    return [];
   },
 };
 

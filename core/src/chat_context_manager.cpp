@@ -165,8 +165,20 @@ void chat_context_manager::summarize_with_model(std::string const& convo_id, mod
 	} catch (...) {
 		std::lock_guard<std::mutex> lk(mutex_);
 		auto fallback_msgs = backend_->load(convo_id);
-		summarize_if_needed(fallback_msgs);
-		backend_->save(convo_id, fallback_msgs);
+		// Guard against concurrent appends: if messages were added during the LLM
+		// call, preserve them by only summarizing the original range.
+		if (fallback_msgs.size() > msg_count_before) {
+			std::vector<chat_message> original(fallback_msgs.begin(),
+											   fallback_msgs.begin() + msg_count_before);
+			auto tail = std::vector<chat_message>(fallback_msgs.begin() + msg_count_before,
+												  fallback_msgs.end());
+			summarize_if_needed(original);
+			original.insert(original.end(), tail.begin(), tail.end());
+			backend_->save(convo_id, original);
+		} else {
+			summarize_if_needed(fallback_msgs);
+			backend_->save(convo_id, fallback_msgs);
+		}
 	}
 }
 

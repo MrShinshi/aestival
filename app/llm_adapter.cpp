@@ -10,8 +10,6 @@
 #include "platform/openai.h"
 #include "bot_config.h"
 
-#include <nlohmann/json.hpp>
-
 static nlohmann::json build_messages_json(std::vector<client::chat_message> const& msgs) {
 	auto arr = nlohmann::json::array();
 	for (auto const& m : msgs) {

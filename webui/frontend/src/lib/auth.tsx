@@ -69,29 +69,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/ui/auth/me', {
-        credentials: 'include',
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.authenticated) {
-          setUser(data.user);
-          setLinkedAccounts(data.linked_accounts || []);
-          setHasPassword(data.has_password || false);
-          setIsAdmin(data.user?.is_admin || false);
-        } else {
+    let retries = 0;
+    const maxRetries = 2;
+    while (retries <= maxRetries) {
+      try {
+        const resp = await fetch('/api/ui/auth/me', {
+          credentials: 'include',
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.authenticated) {
+            setUser(data.user);
+            setLinkedAccounts(data.linked_accounts || []);
+            setHasPassword(data.has_password || false);
+            setIsAdmin(data.user?.is_admin || false);
+          } else {
+            setUser(null);
+            setLinkedAccounts([]);
+            setHasPassword(false);
+            setIsAdmin(false);
+          }
+          break;
+        } else if (resp.status === 401 || resp.status === 403) {
+          // Server explicitly rejected — clear state.
           setUser(null);
           setLinkedAccounts([]);
           setHasPassword(false);
           setIsAdmin(false);
+          break;
         }
+        // 5xx — may be transient, retry after backoff.
+        if (retries < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000 * (retries + 1)));
+        }
+        retries++;
+      } catch {
+        // Network error — retry with backoff, don't clear auth state.
+        if (retries < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000 * (retries + 1)));
+        }
+        retries++;
       }
-    } catch {
-      // Network error — don't clear auth state
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {

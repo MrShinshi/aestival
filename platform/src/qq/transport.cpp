@@ -193,6 +193,7 @@ boost::asio::awaitable<void> session::heartbeat_loop() {
 			s << "[asio] heartbeat failed: " << e.what();
 			log::error(s.str());
 		}
+		ws_connected_ = false;
 	}
 }
 

@@ -74,6 +74,12 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
+// ── Global error handler (must be LAST middleware) ────────────────────────
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[unhandled]', err.message || err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(config.port, async () => {
   console.log(`aestival Web UI backend listening on http://localhost:${config.port}`);
 

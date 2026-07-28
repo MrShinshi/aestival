@@ -9,10 +9,12 @@
 import { Express } from 'express';
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
+import * as os from 'os';
 import { sanitizeAgentId } from './sanitize';
 
-// Base path for agent storage dirs
-const CONTEXTS_BASE = process.env.BOT_CONTEXTS_BASE || '/home/shinshi/aestival/bin/contexts';
+// Base path for agent storage dirs.
+// Default: ~/aestival/bin/contexts (override with BOT_CONTEXTS_BASE).
+const CONTEXTS_BASE = process.env.BOT_CONTEXTS_BASE || `${os.homedir()}/aestival/bin/contexts`;
 
 /** Derive a readable label from a convo_id. */
 function formatConvoId(convoId: string): string {

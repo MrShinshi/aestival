@@ -6,11 +6,13 @@
 
 import { Express } from 'express';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
-const LOG_PATH = process.env.BOT_LOG_PATH || '/home/shinshi/aestival/bin/bot.log';
+// Default: ~/aestival/bin/bot.log (override with BOT_LOG_PATH).
+const LOG_PATH = process.env.BOT_LOG_PATH || `${os.homedir()}/aestival/bin/bot.log`;
 // Allowed base directory for log files (prevents reading arbitrary files).
-const LOG_BASE = process.env.BOT_LOG_BASE || '/home/shinshi/aestival';
+const LOG_BASE = process.env.BOT_LOG_BASE || `${os.homedir()}/aestival`;
 
 /** Reject log paths outside the allowed base directory. */
 function isSafeLogPath(filePath: string): boolean {

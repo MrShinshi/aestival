@@ -19,7 +19,7 @@
 # as environment variables.
 #
 # Environment variables (optional):
-#   AESTIVAL_REMOTE_DIR default: /home/shinshi/aestival
+#   AESTIVAL_REMOTE_DIR  default: derived from TARGET user (e.g. /home/<user>/aestival)
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -48,7 +48,8 @@ if [ -z "${AESTIVAL_TARGET:-}" ]; then
 fi
 
 TARGET="$AESTIVAL_TARGET"
-REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
+REMOTE_USER="${TARGET%@*}"
+REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/$REMOTE_USER/aestival}"
 REMOTE_BIN="$REMOTE_DIR/bin"
 TEMP_DIR="$(mktemp -d)"
 

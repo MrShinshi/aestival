@@ -47,8 +47,16 @@ aestival
 
 ### 部署
 
+部署目标（服务器地址、SSH 主机密钥）由仓库根目录的 `.deploy_config` 文件定义，该文件由用户手动维护，**永不提交到仓库**。Agent 在执行任何部署操作前，必须先检查此文件是否存在：若不存在，提醒用户创建并给出示例内容。
+
+`.deploy_config` 格式：
 ```bash
-# 将最新 CI 制品部署到生产服务器 (122.51.129.97)
+AESTIVAL_TARGET=user@<server-ip>
+AESTIVAL_HOST_KEY="ssh-ed25519 AAAA..."
+```
+
+```bash
+# 将最新 CI 制品部署到生产服务器
 ./deploy.sh                  # 从当前分支
 ./deploy.sh --branch main    # 从其他分支
 ./deploy.sh --restart        # 部署后重启服务
@@ -57,7 +65,7 @@ aestival
 ./deploy.sh --sync
 ```
 
-CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过 SSH 完成。
+CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过 SSH 完成。部署所需的服务器 IP 和主机密钥通过 GitHub Secrets（`DEPLOY_HOST`、`DEPLOY_HOST_KEY`）注入。
 
 ### 依赖（vcpkg）
 

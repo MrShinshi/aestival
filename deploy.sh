@@ -14,8 +14,11 @@
 #   ./deploy.sh --sync             # after PR merge: reset current branch to main
 #   ./deploy.sh --help             # show this help
 #
+# Deployment target is loaded from $REPO_ROOT/.deploy_config (user-maintained,
+# never committed).  Alternatively set AESTIVAL_TARGET + AESTIVAL_HOST_KEY
+# as environment variables.
+#
 # Environment variables (optional):
-#   AESTIVAL_TARGET   default: shinshi@122.51.129.97
 #   AESTIVAL_REMOTE_DIR default: /home/shinshi/aestival
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -23,16 +26,42 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
-TARGET="${AESTIVAL_TARGET:-shinshi@122.51.129.97}"
+
+# ── Load deploy target & host key ───────────────────────────────────────────
+# Priority: 1) environment variable  2) .deploy_config file (user-maintained,
+# never committed).  If neither is set, abort with a clear message.
+DEPLOY_CONFIG="$REPO_ROOT/.deploy_config"
+if [ -f "$DEPLOY_CONFIG" ]; then
+  source "$DEPLOY_CONFIG"
+fi
+
+if [ -z "${AESTIVAL_TARGET:-}" ]; then
+  echo "ERROR: AESTIVAL_TARGET not set." >&2
+  echo "" >&2
+  echo "  Create '$DEPLOY_CONFIG' with these contents:" >&2
+  echo "" >&2
+  echo '    AESTIVAL_TARGET=user@<your-server-ip>' >&2
+  echo '    AESTIVAL_HOST_KEY="ssh-ed25519 AAAA..."' >&2
+  echo "" >&2
+  echo "  Or export AESTIVAL_TARGET as an environment variable." >&2
+  exit 1
+fi
+
+TARGET="$AESTIVAL_TARGET"
 REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
 REMOTE_BIN="$REMOTE_DIR/bin"
 TEMP_DIR="$(mktemp -d)"
 
-# Server host key for TOFU protection (Ed25519).
-SERVER_HOST_KEY="${AESTIVAL_HOST_KEY:-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn}"
+# Server host key for TOFU protection.
+# Extract host from TARGET (user@1.2.3.4 → 1.2.3.4).
+HOST_ONLY="${TARGET#*@}"
 KNOWN_HOSTS_FILE="$(mktemp)"
-echo "122.51.129.97 $SERVER_HOST_KEY" > "$KNOWN_HOSTS_FILE"
-SSH_CMD="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_FILE"
+if [ -n "${AESTIVAL_HOST_KEY:-}" ]; then
+  echo "$HOST_ONLY $AESTIVAL_HOST_KEY" > "$KNOWN_HOSTS_FILE"
+  SSH_CMD="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_FILE"
+else
+  SSH_CMD="ssh -o StrictHostKeyChecking=accept-new"
+fi
 RESTART_SVC=false
 SYNC_BRANCH=false
 BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"

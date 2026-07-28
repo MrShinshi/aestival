@@ -32,6 +32,7 @@ webui/backend/dist/
 # environment / secrets
 .env
 .env.*
+.deploy_config
 
 # logs
 *.log

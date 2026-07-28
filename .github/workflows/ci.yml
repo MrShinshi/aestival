@@ -287,26 +287,26 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+          echo "${{ secrets.DEPLOY_HOST }} ${{ secrets.DEPLOY_HOST_KEY }}" > ~/.ssh/known_hosts
           cleanup_keys() { rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts; }
           trap cleanup_keys EXIT
 
           # 1. Stop service before overwriting binary (avoids ETXTBUSY)
-          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+          ssh -i ~/.ssh/deploy_key shinshi@${{ secrets.DEPLOY_HOST }} "
             export XDG_RUNTIME_DIR=/run/user/\$(id -u)
             systemctl --user stop aestival-bot.service || true
           "
 
           # 2. Package & push in one compressed pipe
-          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
+          ssh -i ~/.ssh/deploy_key shinshi@${{ secrets.DEPLOY_HOST }} "mkdir -p /home/shinshi/aestival/bin/{config,contexts,workspace}"
           tar -czf - -C bin aestival -C .. workspace |
-            ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+            ssh -i ~/.ssh/deploy_key shinshi@${{ secrets.DEPLOY_HOST }} "
               tar -xzf - -C /home/shinshi/aestival/bin &&
               mv /home/shinshi/aestival/bin/aestival /home/shinshi/aestival/bin/aestival.new
             "
 
           # 3. Atomic swap + start
-          ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+          ssh -i ~/.ssh/deploy_key shinshi@${{ secrets.DEPLOY_HOST }} "
             mv /home/shinshi/aestival/bin/aestival.new /home/shinshi/aestival/bin/aestival
             export XDG_RUNTIME_DIR=/run/user/\$(id -u)
             systemctl --user start aestival-bot.service
@@ -379,7 +379,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo "122.51.129.97 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL05yYQVDpmc3oO21VpAvdaMBPOQeUvpOeihVCar6Msn" > ~/.ssh/known_hosts
+          echo "${{ secrets.DEPLOY_HOST }} ${{ secrets.DEPLOY_HOST_KEY }}" > ~/.ssh/known_hosts
           cleanup_keys() { rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts; }
           trap cleanup_keys EXIT
 
@@ -400,7 +400,7 @@ jobs:
 
           echo ":: deploying ($(du -sh "$STG" | cut -f1))..."
           tar -czf - -C "$STG" backend frontend |
-            ssh -i ~/.ssh/deploy_key shinshi@122.51.129.97 "
+            ssh -i ~/.ssh/deploy_key shinshi@${{ secrets.DEPLOY_HOST }} "
               set -e
               rm -rf /home/shinshi/aestival/webui/backend/dist
               rm -rf /home/shinshi/aestival/webui/frontend/*

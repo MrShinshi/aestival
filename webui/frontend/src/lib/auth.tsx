@@ -8,6 +8,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { auth as authApi } from './api';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hasPassword, setHasPassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Listen for auth:expired events from the API client (401 responses).
+  // When triggered, clear user state; ProtectedRoute handles the /login redirect.
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      setLinkedAccounts([]);
+      setHasPassword(false);
+      setIsAdmin(false);
+    };
+    window.addEventListener('auth:expired', handler);
+    return () => window.removeEventListener('auth:expired', handler);
+  }, []);
 
   const refresh = useCallback(async () => {
     let retries = 0;
@@ -129,39 +143,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
     try {
-      const resp = await fetch('/api/ui/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, password }),
-      });
-      if (resp.ok) {
-        await refresh();
-        return { success: true as const };
-      }
-      const data = await resp.json().catch(() => ({ error: '登录失败' }));
-      return { success: false as const, error: data.error || '登录失败' };
-    } catch {
-      return { success: false as const, error: '网络错误，请重试' };
+      await authApi.login(username, password);
+      await refresh();
+      return { success: true as const };
+    } catch (err: any) {
+      return { success: false as const, error: err.message || '登录失败' };
     }
   }, [refresh]);
 
   const register = useCallback(async (username: string, password: string) => {
     try {
-      const resp = await fetch('/api/ui/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, password }),
-      });
-      if (resp.ok) {
-        await refresh();
-        return { success: true as const };
-      }
-      const data = await resp.json().catch(() => ({ error: '注册失败' }));
-      return { success: false as const, error: data.error || '注册失败' };
-    } catch {
-      return { success: false as const, error: '网络错误，请重试' };
+      await authApi.register(username, password);
+      await refresh();
+      return { success: true as const };
+    } catch (err: any) {
+      return { success: false as const, error: err.message || '注册失败' };
     }
   }, [refresh]);
 

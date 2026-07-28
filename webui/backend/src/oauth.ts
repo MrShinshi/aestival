@@ -6,6 +6,9 @@
  * the provider name, return URL, operation mode, and a random nonce for
  * replay protection.
  *
+ * Anti-replay: each nonce can only be consumed once.  A LRU-style Map tracks
+ * recently consumed nonces with a TTL matching the state token lifetime.
+ *
  * The same JWT_SECRET used for session tokens signs the state token.
  * This is a stateless alternative to a server-side session store.
  */
@@ -25,6 +28,17 @@ export interface OAuthState {
 const STATE_SECRET = config.jwtSecret;
 const STATE_EXPIRY = '10m';
 
+/** In-memory consumed-nonce set.  Entries auto-expire after 10 minutes. */
+const consumedNonces = new Map<string, number>(); // nonce → expiry timestamp (ms)
+
+/** Purge expired nonces.  Called before each verification. */
+function purgeExpiredNonces() {
+  const now = Date.now();
+  for (const [nonce, expires] of consumedNonces) {
+    if (now > expires) consumedNonces.delete(nonce);
+  }
+}
+
 /**
  * Generate a signed state token for an OAuth redirect.
  * The returned string is placed in the OAuth authorize URL's `state` parameter.
@@ -42,13 +56,27 @@ export function generateState(params: Omit<OAuthState, 'nonce'>): string {
 
 /**
  * Verify and decode an OAuth state token received from a callback.
- * Returns null on any failure (expired, tampered, malformed).
+ * Each token can be consumed at most once — subsequent attempts return null.
+ * Returns null on any failure (expired, tampered, malformed, or replayed).
  */
 export function verifyState(token: string): OAuthState | null {
+  let payload: OAuthState;
   try {
-    const payload = jwt.verify(token, STATE_SECRET, { algorithms: ['HS256'] });
-    return payload as OAuthState;
+    payload = jwt.verify(token, STATE_SECRET, { algorithms: ['HS256'] }) as OAuthState;
   } catch {
     return null;
   }
+
+  purgeExpiredNonces();
+
+  // Check replay: this nonce must not have been used before.
+  if (consumedNonces.has(payload.nonce)) {
+    console.warn('[oauth] replayed state token detected — nonce already consumed');
+    return null;
+  }
+
+  // Mark nonce as consumed; auto-expire after 10 minutes.
+  consumedNonces.set(payload.nonce, Date.now() + 10 * 60 * 1000);
+
+  return payload;
 }

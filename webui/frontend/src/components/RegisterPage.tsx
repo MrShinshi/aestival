@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Navigate } from 'react-router-dom';
+import { validateUsername } from '@shared/validation';
 
 export default function RegisterPage() {
   const { isAuthenticated, isLoading, register } = useAuth();
@@ -41,14 +42,8 @@ export default function RegisterPage() {
       setError('用户名不能为空');
       return;
     }
-    if (username.trim().length < 2 || username.trim().length > 32) {
-      setError('用户名长度需在 2-32 个字符之间');
-      return;
-    }
-    if (!/^[\w一-鿿-]{2,32}$/.test(username.trim())) {
-      setError('用户名只能包含字母、数字、下划线、连字符和中文');
-      return;
-    }
+    const nameErr = validateUsername(username);
+    if (nameErr) { setError(nameErr); return; }
     if (!password) {
       setError('密码不能为空');
       return;

@@ -20,9 +20,8 @@ import type { User } from './accounts';
 
 const BCRYPT_ROUNDS = 12;
 
-/** Allowed username characters: ASCII alphanumeric, underscore, hyphen, CJK. */
+// Canonical regexes — keep in sync with webui/shared/validation.ts
 const USERNAME_RE = /^[\w一-鿿㐀-䶿-]{2,32}$/;
-
 const MIN_PASSWORD_LEN = 8;
 const MAX_PASSWORD_LEN = 128;
 
@@ -43,48 +42,28 @@ function rowToUser(row: any): User {
 
 // ── Public: hashing ──────────────────────────────────────────────────────────
 
-/** Hash a plaintext password.  Always use 12 rounds. */
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
-/** Compare a plaintext password against a stored hash. */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
 
 // ── Public: validation ───────────────────────────────────────────────────────
 
-/**
- * Validate a username.  Returns an error message on failure, null on success.
- */
 export function validateUsername(username: unknown): string | null {
-  if (!username || typeof username !== 'string') {
-    return '用户名不能为空';
-  }
+  if (!username || typeof username !== 'string') return '用户名不能为空';
   const trimmed = username.trim();
-  if (trimmed.length < 2 || trimmed.length > 32) {
-    return '用户名长度需在 2-32 个字符之间';
-  }
-  if (!USERNAME_RE.test(trimmed)) {
-    return '用户名只能包含字母、数字、下划线、连字符和中文';
-  }
+  if (trimmed.length < 2 || trimmed.length > 32) return '用户名长度需在 2-32 个字符之间';
+  if (!USERNAME_RE.test(trimmed)) return '用户名只能包含字母、数字、下划线、连字符和中文';
   return null;
 }
 
-/**
- * Validate a password.  Returns an error message on failure, null on success.
- */
 export function validatePassword(password: unknown): string | null {
-  if (!password || typeof password !== 'string') {
-    return '密码不能为空';
-  }
-  if (password.length < MIN_PASSWORD_LEN) {
-    return `密码长度至少为 ${MIN_PASSWORD_LEN} 个字符`;
-  }
-  if (password.length > MAX_PASSWORD_LEN) {
-    return `密码长度不能超过 ${MAX_PASSWORD_LEN} 个字符`;
-  }
+  if (!password || typeof password !== 'string') return '密码不能为空';
+  if (password.length < MIN_PASSWORD_LEN) return `密码长度至少为 ${MIN_PASSWORD_LEN} 个字符`;
+  if (password.length > MAX_PASSWORD_LEN) return `密码长度不能超过 ${MAX_PASSWORD_LEN} 个字符`;
   return null;
 }
 

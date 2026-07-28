@@ -6,25 +6,29 @@
 const BASE = '/api/ui';
 const TIMEOUT_MS = 30_000;
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export interface RequestOpts {
+  skipAuthRedirect?: boolean;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, opts?: RequestOpts): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  const opts: RequestInit = {
+  const fetchOpts: RequestInit = {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     credentials: 'include',
     signal: controller.signal,
   };
-  if (body) opts.body = JSON.stringify(body);
+  if (body) fetchOpts.body = JSON.stringify(body);
 
   try {
-    const resp = await fetch(BASE + path, opts);
+    const resp = await fetch(BASE + path, fetchOpts);
     clearTimeout(timer);
 
-    if (resp.status === 401) {
-      // Session expired — redirect to login
-      window.location.href = '/login';
+    if (resp.status === 401 && !opts?.skipAuthRedirect) {
+      // Dispatch event so AuthContext can clear state; ProtectedRoute handles redirect.
+      window.dispatchEvent(new CustomEvent('auth:expired'));
       throw new Error('authentication expired');
     }
 
@@ -207,22 +211,21 @@ export const api = {
 
 // ── Auth API (credential-based) ─────────────────────────────────────────────
 //
-// Note: the auth context in auth.tsx uses raw fetch() for login/register
-// to avoid the 401 auto-redirect in request<T>().  These typed wrappers
-// are exported for any code that needs a direct call with error handling.
+// login/register skip the 401 auto-redirect so that invalid credentials
+// return a typed error response rather than forcing a page navigation.
 
 export const auth = {
   login: (username: string, password: string) =>
     request<{ success: boolean; user: { id: string; username: string; avatar_url: string } }>(
-      'POST', '/auth/login', { username, password },
+      'POST', '/auth/login', { username, password }, { skipAuthRedirect: true },
     ),
   register: (username: string, password: string) =>
     request<{ success: boolean; user: { id: string; username: string; avatar_url: string } }>(
-      'POST', '/auth/register', { username, password },
+      'POST', '/auth/register', { username, password }, { skipAuthRedirect: true },
     ),
   setPassword: (password: string) =>
     request<{ success: boolean }>('POST', '/auth/set-password', { password }),
 };
 
-/** Current app version — keep in sync with package.json. */
-export const APP_VERSION = '1.0.0';
+/** Current app version — injected by Vite at build time. */
+export const APP_VERSION: string = (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0') as string;

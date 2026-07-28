@@ -5,9 +5,10 @@
  * read-your-writes access.  The auth database is separate from per-agent
  * conversations.db — it stores user accounts and OAuth platform links.
  *
- * Resource pattern: callers MUST NOT hold the returned Database handle
- * across requests.  Each request should obtain a fresh handle via
- * getAuthDb() and close it in try/finally — see CLAUDE.md line 185-195.
+ * Singleton pattern: a single long-lived handle is appropriate because
+ * better-sqlite3 is synchronous and thread-safe, and the auth DB is small
+ * with infrequent writes.  Callers must NOT call .close() on the returned
+ * handle — closeAuthDb() is reserved for shutdown (tests / SIGTERM).
  */
 
 import Database from 'better-sqlite3';

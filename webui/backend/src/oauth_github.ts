@@ -17,8 +17,8 @@
 import { Express, Request, Response } from 'express';
 import { config } from './config';
 import { generateState, verifyState } from './oauth';
-import { findOrCreateUser, OAuthProfile } from './accounts';
-import { signSession, setAuthCookie } from './auth';
+import { OAuthProfile } from './accounts';
+import { handleOAuthProfile } from './oauth_handler';
 
 /** Call github.com — server can egress; browsers behind GFW often can't. */
 async function githubApi(
@@ -185,31 +185,10 @@ export function setupGithubAuth(app: Express): void {
         accessToken,
       };
 
-      const result = findOrCreateUser(profile, stateData.mode, stateData.userId);
-
-      if (result.conflict) {
-        res.json({
-          conflict: true,
-          targetUserId: result.user.id,
-          targetUsername: result.user.username,
-          sourceUserId: result.conflict.existingUser.id,
-          sourceUsername: result.conflict.existingUser.username,
-        });
-        return;
-      }
-
-      const sessionToken = signSession(result.user);
-      setAuthCookie(res, sessionToken);
-
-      res.json({
-        success: true,
-        user: result.user,
-        isNew: result.isNew,
-        redirect: stateData.redirect || '/',
-      });
+      handleOAuthProfile(profile, stateData, req, res); // JSON response — no redirect
     } catch (err: any) {
-      console.error('[github] token error:', err.message || err);
-      res.status(502).json({ error: err.message || 'github api error' });
+      console.error('[github] token error:', err.stack || err.message || err);
+      res.status(502).json({ error: 'OAuth 认证失败，请稍后重试' });
     }
   });
 }

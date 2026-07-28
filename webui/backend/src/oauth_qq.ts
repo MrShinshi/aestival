@@ -15,8 +15,8 @@ import { Express, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from './config';
 import { generateState, verifyState } from './oauth';
-import { findOrCreateUser, OAuthProfile } from './accounts';
-import { signSession, setAuthCookie } from './auth';
+import { OAuthProfile } from './accounts';
+import { handleOAuthProfile } from './oauth_handler';
 
 const QQ_AUTHORIZE = 'https://graph.qq.com/oauth2.0/authorize';
 const QQ_TOKEN = 'https://graph.qq.com/oauth2.0/token';
@@ -240,30 +240,7 @@ export function setupQQAuth(app: Express): void {
           : undefined,
       };
 
-      const result = findOrCreateUser(profile, stateData.mode, stateData.userId);
-
-      // 6. Handle conflict
-      if (result.conflict) {
-        const params = new URLSearchParams({
-          error: 'conflict',
-          provider: 'qq',
-          targetUserId: result.user.id,
-          targetUsername: result.user.username,
-          sourceUserId: result.conflict.existingUser.id,
-          sourceUsername: result.conflict.existingUser.username,
-        });
-        res.redirect(`/auth/callback?${params.toString()}`);
-        return;
-      }
-
-      // 7. Success
-      const sessionToken = signSession(result.user);
-      setAuthCookie(res, sessionToken);
-
-      const redirect = stateData.redirect || '/';
-      res.redirect(
-        `/auth/callback?login=success&redirect=${encodeURIComponent(redirect)}`,
-      );
+      handleOAuthProfile(profile, stateData, req, res, { redirectOnSuccess: true });
     } catch (err: any) {
       console.error('[qq] unexpected error:', err);
       res.redirect(`/auth/callback?error=server_error&provider=qq`);

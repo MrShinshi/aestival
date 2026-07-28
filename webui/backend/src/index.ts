@@ -16,6 +16,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import http from 'http';
 import { setupAuth, requireAuth, requireAdmin } from './auth';
 import { setupGithubAuth } from './oauth_github';
 import { setupQQAuth } from './oauth_qq';
@@ -24,6 +25,7 @@ import { setupLogs } from './logs';
 import { setupConversations } from './conversations';
 import { config } from './config';
 import { ensureAdminPassword } from './credentials';
+import { closeAuthDb } from './db';
 
 const app = express();
 
@@ -38,14 +40,64 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
+// ── Rate limiting for auth endpoints ──────────────────────────────────────
+// In-memory sliding-window limiter — avoids adding express-rate-limit
+// dependency for this small deployment.
+
+function rateLimit(maxRequests: number, windowMs: number) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+
+  // Purge stale entries every 60s
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits) {
+      if (now > entry.resetAt) hits.delete(key);
+    }
+  }, 60_000).unref();
+
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    let entry = hits.get(key);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + windowMs };
+      hits.set(key, entry);
+    }
+    entry.count++;
+    if (entry.count > maxRequests) {
+      res.status(429).json({ error: '请求过于频繁，请稍后重试' });
+      return;
+    }
+    next();
+  };
+}
+
 // ── Public routes (no auth) ────────────────────────────────────────────────
 setupAuth(app);          // /me, /logout, /merge, /unlink
 setupGithubAuth(app);    // /auth/github, /auth/github/callback
 setupQQAuth(app);        // /auth/qq, /auth/qq/callback
 
-// Health check
-app.get('/api/ui/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Rate-limit auth endpoints
+app.use('/api/ui/auth/login', rateLimit(30, 15 * 60 * 1000));
+app.use('/api/ui/auth/register', rateLimit(10, 15 * 60 * 1000));
+
+// Health check — verifies downstream bot API reachability
+app.get('/api/ui/health', async (_req, res) => {
+  const checks: Record<string, string> = {};
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const req = http.get(config.botApiUrl + '/health', (resp) => {
+        checks.botApi = resp.statusCode === 200 ? 'ok' : `status ${resp.statusCode}`;
+        resp.resume();
+        resolve();
+      });
+      req.on('error', (e) => { checks.botApi = `unreachable: ${e.message}`; resolve(); });
+      req.setTimeout(3000, () => { req.destroy(); checks.botApi = 'timeout'; resolve(); });
+    });
+  } catch {
+    checks.botApi = 'error';
+  }
+  res.json({ status: 'ok', checks, timestamp: new Date().toISOString() });
 });
 
 // ── Protected routes (JWT session cookie required) ─────────────────────────
@@ -84,8 +136,6 @@ app.listen(config.port, async () => {
   console.log(`aestival Web UI backend listening on http://localhost:${config.port}`);
 
   // ── Admin credential preset ─────────────────────────────────────────────
-  // If AUTH_ADMIN_USER + AUTH_ADMIN_PASS are set, bind a password to the
-  // named OAuth user on startup so they can also log in with credentials.
   if (config.adminUser && config.adminPass) {
     const ok = await ensureAdminPassword(config.adminUser, config.adminPass);
     if (ok) {
@@ -105,3 +155,12 @@ app.listen(config.port, async () => {
     console.log('  QQ OAuth: not configured (set QQ_APP_ID)');
   }
 });
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────
+function shutdown(signal: string) {
+  console.log(`\n[webui] ${signal} received — shutting down...`);
+  try { closeAuthDb(); console.log('[webui] auth DB closed'); } catch {}
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

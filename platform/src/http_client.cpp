@@ -32,7 +32,7 @@ static ssl::context& pool_ssl_ctx(bool verify_tls) {
 		return ctx;
 	}
 	static ssl::context ctx{ssl::context::tlsv12_client};
-	static bool once = [] {
+	(void)[] {
 		ctx.set_verify_mode(ssl::verify_none);
 		return true;
 	}();

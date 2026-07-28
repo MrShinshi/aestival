@@ -37,7 +37,7 @@ inline boost::asio::ssl::context make_ssl_ctx(bool verify_tls) {
 // when the remote server accepts the connection but never responds.
 template <typename Stream>
 inline void set_socket_timeout(Stream& stream, int seconds) {
-	auto& sock = beast::get_lowest_layer(stream).socket();
+	auto& sock = boost::beast::get_lowest_layer(stream).socket();
 #ifdef _WIN32
 	DWORD timeout_ms = static_cast<DWORD>(seconds) * 1000;
 	setsockopt(sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO,

@@ -5,8 +5,9 @@ import {
   Wrench, Zap, Clock,
 } from 'lucide-react';
 import { api, type AgentInfo } from '../lib/api';
+import { useMetricsHistory } from '../hooks/useMetricsHistory';
 import StatCard from '../components/StatCard';
-import CpuGauge from '../components/CpuGauge';
+import ResourceChart from '../components/ResourceChart';
 import TokenChart from '../components/TokenChart';
 import AgentMetricsTable from '../components/AgentMetricsTable';
 
@@ -40,6 +41,8 @@ export default function Dashboard() {
   const agentsQ = useQuery({ queryKey: ['agents'], queryFn: api.agents, refetchInterval: 10_000 });
   const metricsQ = useQuery({ queryKey: ['metrics'], queryFn: api.metrics, refetchInterval: 15_000, enabled: tab === 'agents' || tab === 'overview' });
   const tokensQ = useQuery({ queryKey: ['tokenStats'], queryFn: api.tokenStats, refetchInterval: 30_000, enabled: tab === 'tokens' || tab === 'overview' });
+  // Real-time CPU / memory history for the dynamic line chart (poll every 5 s)
+  const metricsHistory = useMetricsHistory(60);
 
   const status = statusQ.data;
   const agents: AgentInfo[] = agentsQ.data || [];
@@ -105,41 +108,20 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* System resources row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* CPU */}
-            <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-              <h3 className="text-sm font-semibold text-gray-400 mb-3">CPU 使用率</h3>
-              <div className="flex items-center justify-center">
-                <CpuGauge
-                  label="CPU"
-                  percent={status?.system?.cpu_percent || 0}
-                  displayValue={`${(status?.system?.cpu_percent || 0).toFixed(1)}%`}
-                />
-              </div>
-            </div>
-            {/* Memory */}
-            <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-              <h3 className="text-sm font-semibold text-gray-400 mb-3">内存使用</h3>
-              <div className="flex items-center justify-center">
-                {(() => {
+          {/* System resources — dynamic line chart */}
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-400">系统资源</h3>
+              {/* Instant snapshot values */}
+              <div className="flex gap-4 text-xs text-gray-500">
+                <span>CPU <span className="text-indigo-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                <span>内存 <span className="text-green-400 font-mono">{(() => {
                   const rss = status?.system?.memory_rss_mb || 0;
-                  const total = status?.system?.memory_total_mb || 0;
-                  const memPct = total > 0 ? (rss / total) * 100 : 0;
-                  const displayMb = rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
-                  const totalMb = total >= 1024 ? `${(total / 1024).toFixed(1)} GB` : total > 0 ? `${total.toFixed(0)} MB` : '';
-                  return (
-                    <CpuGauge
-                      label="内存"
-                      percent={memPct}
-                      displayValue={displayMb}
-                      subValue={totalMb ? `共 ${totalMb}` : undefined}
-                      color="stroke-cyan-400"
-                    />
-                  );
-                })()}
+                  return rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
+                })()}</span></span>
               </div>
             </div>
+            <ResourceChart data={metricsHistory} height={200} />
           </div>
 
           {/* Thread / Worker info */}

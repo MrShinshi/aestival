@@ -1,9 +1,9 @@
 /**
  * Client-side uptime ticker + formatter.
  *
- * The server reports uptime_seconds at poll intervals (10–15s).
- * This hook advances the value every second so the displayed time
- * ticks up smoothly rather than jumping every poll cycle.
+ * Captures the initial server uptime value once, then increments every
+ * second purely on the client.  Never re-syncs — avoids the visual flicker
+ * caused by periodic server polls overwriting the live counter.
  */
 import { useState, useEffect, useRef } from 'react';
 
@@ -21,17 +21,14 @@ export function fmtUptime(seconds: number): string {
 export function useUptime(serverSeconds: number | undefined): number | undefined {
   const [live, setLive] = useState<number | undefined>(serverSeconds);
   const baseRef = useRef<{ seconds: number; at: number } | null>(null);
+  const seeded = useRef(false);
 
-  useEffect(() => {
-    if (serverSeconds === undefined || serverSeconds === null) {
-      baseRef.current = null;
-      setLive(undefined);
-      return;
-    }
-    // Reset base whenever the server value changes (new poll).
+  // Capture the initial server value ONCE.  Subsequent poll values are
+  // ignored — the client-side interval keeps the counter alive.
+  if (!seeded.current && serverSeconds !== undefined && serverSeconds !== null) {
+    seeded.current = true;
     baseRef.current = { seconds: serverSeconds, at: Date.now() };
-    setLive(serverSeconds);
-  }, [serverSeconds]);
+  }
 
   useEffect(() => {
     const timer = setInterval(() => {

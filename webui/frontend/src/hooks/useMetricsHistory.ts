@@ -1,6 +1,9 @@
 /**
- * Custom hook: polls api.status() every 5 seconds and accumulates a rolling
+ * Custom hook: polls api.status() every 2 seconds and accumulates a rolling
  * window of CPU / memory data points for the real-time line chart.
+ *
+ * 2-second polling + smooth line animation mimics the Windows Task Manager
+ * Performance tab feel.
  */
 import { useRef, useState, useEffect } from 'react';
 import { api } from '../lib/api';
@@ -14,7 +17,7 @@ export interface MetricsPoint {
   memoryPercent: number; // RSS / total * 100, 0 when total is unknown
 }
 
-const DEFAULT_MAX_POINTS = 60;  // 5 minutes at 5-second intervals
+const DEFAULT_MAX_POINTS = 60;  // 2 minutes at 2-second intervals
 
 export function useMetricsHistory(maxPoints: number = DEFAULT_MAX_POINTS) {
   const [history, setHistory] = useState<MetricsPoint[]>([]);
@@ -52,7 +55,7 @@ export function useMetricsHistory(maxPoints: number = DEFAULT_MAX_POINTS) {
     };
 
     poll(); // immediate first sample
-    const interval = setInterval(poll, 5000);
+    const interval = setInterval(poll, 2000);
 
     return () => {
       active = false;

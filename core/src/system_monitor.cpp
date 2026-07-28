@@ -73,7 +73,14 @@ double compute_cpu_percent(cpu_cache const& prev, cpu_cache const& cur) {
 	auto sys_delta  = cur.sys_ticks  - prev.sys_ticks;
 	if (sys_delta == 0 || g_clock_ticks <= 0)
 		return 0.0;
-	return (static_cast<double>(proc_delta) / static_cast<double>(sys_delta)) * 100.0;
+	// Normalise to per-core percentage so the value matches the Windows
+	// convention (100 % = one fully saturated core).  Without this factor,
+	// a single-threaded process on an 8-core machine reports at most ~12.5 %,
+	// which rounds to 0.0 in the Web UI.
+	int cpu_count = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+	if (cpu_count <= 0)
+		cpu_count = 1;
+	return (static_cast<double>(proc_delta) / static_cast<double>(sys_delta)) * 100.0 * cpu_count;
 }
 
 #endif

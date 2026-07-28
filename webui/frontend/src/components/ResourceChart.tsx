@@ -1,6 +1,9 @@
 /**
  * Real-time resource line chart — renders CPU % and Memory usage as dual-axis
- * dynamic lines with a shared X-axis (time).
+ * dynamic lines with a sliding time window.
+ *
+ * Styled to feel like Windows Task Manager's Performance tab: smooth
+ * animation on every new data point, subtle gradient fill, clean grid.
  *
  * Uses recharts (already in the project) with the same dark-theme styling as
  * TokenChart so the dashboard reads as one consistent system.
@@ -22,20 +25,25 @@ function fmtMB(mb: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
-export default function ResourceChart({ data, height = 220 }: ResourceChartProps) {
-  // Compute memory Y-axis domain so the line doesn't hug the baseline
+export default function ResourceChart({ data, height = 200 }: ResourceChartProps) {
+  // Compute memory Y-axis domain so the line doesn't hug the baseline.
   const memDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as [number, number];
     const values = data.map(d => d.memoryRssMb);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    // Pad by 20 % so the line has breathing room
     const pad = Math.max((max - min) * 0.2, 50);
     return [
       Math.max(0, Math.floor(min - pad)),
       Math.ceil(max + pad),
     ] as [number, number];
   }, [data]);
+
+  // Show sparser X-axis ticks — every ~10 seconds (every 5th point at 2s intervals).
+  const tickInterval = useMemo(() => {
+    if (data.length <= 10) return 0; // show all when there's little data
+    return Math.max(1, Math.floor(data.length / 8));
+  }, [data.length]);
 
   if (data.length === 0) {
     return (
@@ -50,11 +58,11 @@ export default function ResourceChart({ data, height = 220 }: ResourceChartProps
       <LineChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
         <defs>
           <linearGradient id="cpuLineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.15} />
+            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.25} />
             <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="memLineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#4ade80" stopOpacity={0.15} />
+            <stop offset="5%" stopColor="#4ade80" stopOpacity={0.2} />
             <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -62,7 +70,7 @@ export default function ResourceChart({ data, height = 220 }: ResourceChartProps
         <XAxis
           dataKey="time"
           tick={{ fill: '#9ca3af', fontSize: 10 }}
-          interval="preserveStartEnd"
+          interval={tickInterval}
         />
         {/* CPU axis — left, fixed 0–100 % */}
         <YAxis
@@ -99,6 +107,7 @@ export default function ResourceChart({ data, height = 220 }: ResourceChartProps
         <Legend
           wrapperStyle={{ fontSize: '12px', color: '#9ca3af' }}
         />
+        {/* CPU line with smooth Task-Manager-style animation */}
         <Line
           yAxisId="cpu"
           type="monotone"
@@ -108,7 +117,11 @@ export default function ResourceChart({ data, height = 220 }: ResourceChartProps
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 3, fill: '#818cf8' }}
+          isAnimationActive={true}
+          animationDuration={400}
+          animationEasing="ease-out"
         />
+        {/* Memory line */}
         <Line
           yAxisId="mem"
           type="monotone"
@@ -118,6 +131,9 @@ export default function ResourceChart({ data, height = 220 }: ResourceChartProps
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 3, fill: '#4ade80' }}
+          isAnimationActive={true}
+          animationDuration={400}
+          animationEasing="ease-out"
         />
       </LineChart>
     </ResponsiveContainer>

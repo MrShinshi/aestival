@@ -305,15 +305,31 @@ system_resource_snapshot collect_system_resources() {
 			fclose(f);
 	}
 
-	// System total + used memory (Linux)
+	// System total + available memory (Linux)
 #ifdef __linux__
 	{
 		struct sysinfo si;
 		if (sysinfo(&si) == 0) {
 			snap.system_memory_total_bytes = static_cast<int64_t>(si.totalram) * si.mem_unit;
-			auto free_bytes = static_cast<int64_t>(si.freeram) * si.mem_unit;
-			auto buf_bytes  = static_cast<int64_t>(si.bufferram) * si.mem_unit;
-			snap.system_memory_used_bytes = snap.system_memory_total_bytes - free_bytes - buf_bytes;
+			snap.system_memory_used_bytes = static_cast<int64_t>(si.totalram - si.freeram) * si.mem_unit;
+		}
+
+		// Subtract reclaimable page cache (MemAvailable from /proc/meminfo)
+		// so the percentage matches free(1) / htop / Windows Task Manager.
+		FILE* fm = fopen("/proc/meminfo", "r");
+		if (fm) {
+			char buf[256];
+			unsigned long kb_avail = 0;
+			while (fgets(buf, sizeof(buf), fm)) {
+				if (sscanf(buf, "MemAvailable: %lu kB", &kb_avail) == 1) {
+					int64_t avail = static_cast<int64_t>(kb_avail) * 1024;
+					snap.system_memory_used_bytes = snap.system_memory_total_bytes - avail;
+					if (snap.system_memory_used_bytes < 0)
+						snap.system_memory_used_bytes = 0;
+					break;
+				}
+			}
+			fclose(fm);
 		}
 	}
 #endif

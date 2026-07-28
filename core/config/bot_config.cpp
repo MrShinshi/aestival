@@ -100,6 +100,11 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 				mcp.startup_timeout = std::chrono::seconds(to->get<int>());
 			if (auto to = s.find("call_timeout"); to != s.end() && to->is_number())
 				mcp.call_timeout = std::chrono::seconds(to->get<int>());
+				if (auto env = s.find("env"); env != s.end() && env->is_object()) {
+					for (auto const& [k, v] : env->items())
+						if (v.is_string())
+							mcp.env[k] = v.get<std::string>();
+				}
 			if (!mcp.name.empty() && !mcp.command.empty())
 				a.mcp_servers.push_back(std::move(mcp));
 		}
@@ -272,6 +277,12 @@ std::string client::to_json(bot_config const& cfg) {
 					for (auto const& arg : mcp.args)
 						args.push_back(arg);
 					s["args"] = std::move(args);
+				}
+				if (!mcp.env.empty()) {
+					auto env = nlohmann::json::object();
+					for (auto const& [k, v] : mcp.env)
+						env[k] = v;
+					s["env"] = std::move(env);
 				}
 				ms_arr.push_back(std::move(s));
 			}

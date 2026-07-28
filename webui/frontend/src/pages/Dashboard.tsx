@@ -108,40 +108,43 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* CPU line chart */}
-          <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-400">CPU</h3>
-              <span className="text-xs text-gray-500">
-                当前 <span className="text-indigo-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span>
-              </span>
+          {/* CPU + Memory side by side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CPU line chart */}
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-400">CPU</h3>
+                <span className="text-xs text-gray-500">
+                  当前 <span className="text-indigo-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span>
+                </span>
+              </div>
+              <ResourceChart
+                data={metricsHistory}
+                series={[{ dataKey: 'cpuPercent', name: 'CPU', color: '#818cf8', asPercent: true, domain: [0, 100] }]}
+                height={180}
+              />
             </div>
-            <ResourceChart
-              data={metricsHistory}
-              series={[{ dataKey: 'cpuPercent', name: 'CPU', color: '#818cf8', asPercent: true, domain: [0, 100] }]}
-              height={180}
-            />
-          </div>
 
-          {/* Memory line chart — % of total system memory */}
-          <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-400">内存</h3>
-              <span className="text-xs text-gray-500">
-                当前 <span className="text-green-400 font-mono">{(() => {
-                  const rss = status?.system?.memory_rss_mb || 0;
-                  const total = status?.system?.memory_total_mb || 0;
-                  const pct = total > 0 ? ((rss / total) * 100).toFixed(1) : '--';
-                  const label = rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
-                  return `${label} (${pct}%)`;
-                })()}</span>
-              </span>
+            {/* Memory line chart — % of total system memory */}
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-400">内存</h3>
+                <span className="text-xs text-gray-500">
+                  当前 <span className="text-green-400 font-mono">{(() => {
+                    const rss = status?.system?.memory_rss_mb || 0;
+                    const total = status?.system?.memory_total_mb || 0;
+                    const pct = total > 0 ? ((rss / total) * 100).toFixed(1) : '--';
+                    const label = rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
+                    return `${label} (${pct}%)`;
+                  })()}</span>
+                </span>
+              </div>
+              <ResourceChart
+                data={metricsHistory}
+                series={[{ dataKey: 'memoryPercent', name: '内存占比', color: '#4ade80', asPercent: true, domain: [0, 100] }]}
+                height={180}
+              />
             </div>
-            <ResourceChart
-              data={metricsHistory}
-              series={[{ dataKey: 'memoryPercent', name: '内存占比', color: '#4ade80', asPercent: true, domain: [0, 100] }]}
-              height={180}
-            />
           </div>
 
           {/* Thread / Worker info */}

@@ -96,6 +96,13 @@ bool client::mcp_client::launch() {
 		cmd_line += std::wstring(appdata, appdata + strlen(appdata)) + L"\\npm;";
 	cmd_line += L"%PATH%\" && ";
 
+		// Inject per-server environment variables
+		for (auto const& [k, v] : cfg_.env) {
+			std::wstring wk(k.begin(), k.end());
+			std::wstring wv(v.begin(), v.end());
+			cmd_line += L"set \"" + wk + L"=" + wv + L"\" && ";
+		}
+
 	// Append command + args
 	{
 		std::wstring cmd(cfg_.command.begin(), cfg_.command.end());
@@ -194,6 +201,10 @@ bool client::mcp_client::launch() {
 		close(stdout_pipe[0]);
 		close(stdout_pipe[1]);
 
+
+		// Inject per-server environment variables
+		for (auto const& [k, v] : cfg_.env)
+			setenv(k.c_str(), v.c_str(), 1);
 		std::vector<char*> argv;
 		argv.push_back(const_cast<char*>(cfg_.command.c_str()));
 		for (auto const& a : cfg_.args)

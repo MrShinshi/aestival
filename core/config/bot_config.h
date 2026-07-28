@@ -23,6 +23,9 @@ struct mcp_server_config {
 	std::vector<std::string> args;		 // CLI arguments
 	std::chrono::seconds startup_timeout{30};
 	std::chrono::seconds call_timeout{60};
+	// Environment variables injected into the child process.
+	// Keys are uppercased (GITHUB_TOKEN, TWITTER_AUTH_TOKEN, …).
+	std::unordered_map<std::string, std::string> env;
 };
 
 // ─── agent_config ──────────────────────────────────────────────────────────

@@ -60,10 +60,7 @@ export default function ResourceChart({ data, series, height = 200 }: ResourceCh
             tick={{ fill: s.color, fontSize: 10 }}
             domain={s.domain || [0, 'auto']}
             unit={s.asPercent ? '%' : undefined}
-            tickFormatter={v => {
-            if (!s.asPercent) return fmtMB(v as number);
-            return `${v}%`;
-          }}
+            tickFormatter={s.asPercent ? undefined : (v => fmtMB(v as number))}
             width={48}
           />
         ))}

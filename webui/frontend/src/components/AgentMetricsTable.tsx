@@ -13,6 +13,16 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
+function fmtUptime(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (d > 0) return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
 function statusBadge(status: string) {
   const colors: Record<string, string> = {
     running: 'bg-green-900/50 text-green-400',
@@ -51,7 +61,7 @@ function ExpandedRow({ agentId }: { agentId: string }) {
         <div><span className="text-xs text-gray-500">最后消息</span><div className="text-sm text-gray-200">{new Date(m.last_message_at).toLocaleString()}</div></div>
       )}
       {m.uptime_seconds !== undefined && (
-        <div><span className="text-xs text-gray-500">运行时间</span><div className="text-sm text-gray-200">{Math.floor(m.uptime_seconds / 3600)}h {Math.floor((m.uptime_seconds % 3600) / 60)}m</div></div>
+        <div><span className="text-xs text-gray-500">运行时间</span><div className="text-sm text-gray-200">{fmtUptime(m.uptime_seconds)}</div></div>
       )}
     </div>
   );

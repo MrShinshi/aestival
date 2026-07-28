@@ -141,7 +141,7 @@ export default function Dashboard() {
                       const pct = total > 0 ? ((used / total) * 100).toFixed(1) : '--';
                       return `${pct}%`;
                     })()}</span></span>
-                    <span>进程 <span className="text-rose-400 font-mono">{(() => {
+                    <span>进程 <span className="text-orange-400 font-mono">{(() => {
                       const rss = status?.system?.memory_rss_mb || 0;
                       return rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
                     })()}</span></span>
@@ -151,7 +151,7 @@ export default function Dashboard() {
                   data={metricsHistory}
                   series={[
                     { dataKey: 'systemMemoryPercent', name: '系统', color: '#22d3ee' },
-                    { dataKey: 'memoryPercent', name: '进程', color: '#f43f5e' },
+                    { dataKey: 'memoryPercent', name: '进程', color: '#f97316' },
                   ]}
                   height={200}
                   showLegend

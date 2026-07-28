@@ -108,78 +108,53 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* CPU — system + process side by side */}
+          {/* CPU + Memory side by side — each chart overlays system & process */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* System CPU */}
+              {/* CPU */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-400">CPU · 系统</h3>
-                  <span className="text-xs text-gray-500">
-                    当前 <span className="text-indigo-400 font-mono">{status?.system?.system_cpu_percent?.toFixed(1) ?? '--'}%</span>
-                  </span>
+                  <h3 className="text-sm font-semibold text-gray-400">CPU</h3>
+                  <div className="flex gap-3 text-xs text-gray-500">
+                    <span>系统 <span className="text-[#818cf8] font-mono">{status?.system?.system_cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                    <span>进程 <span className="text-[#a78bfa] font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                  </div>
                 </div>
                 <ResourceChart
                   data={metricsHistory}
-                  series={[{ dataKey: 'systemCpuPercent', name: '系统 CPU', color: '#818cf8', asPercent: true, domain: [0, 100] }]}
-                  height={160}
+                  series={[
+                    { dataKey: 'systemCpuPercent', name: '系统', color: '#818cf8', asPercent: true },
+                    { dataKey: 'cpuPercent', name: '进程', color: '#a78bfa', asPercent: true },
+                  ]}
+                  height={200}
+                  showLegend
                 />
               </div>
-              {/* Process CPU */}
-              <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-400">CPU · 服务进程</h3>
-                  <span className="text-xs text-gray-500">
-                    当前 <span className="text-indigo-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span>
-                  </span>
-                </div>
-                <ResourceChart
-                  data={metricsHistory}
-                  series={[{ dataKey: 'cpuPercent', name: '进程 CPU', color: '#a78bfa', asPercent: true, domain: [0, 100] }]}
-                  height={160}
-                />
-              </div>
-            </div>
 
-            {/* Memory — system + process side by side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* System Memory */}
+              {/* Memory */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-400">内存 · 系统</h3>
-                  <span className="text-xs text-gray-500">
-                    当前 <span className="text-green-400 font-mono">{(() => {
+                  <h3 className="text-sm font-semibold text-gray-400">内存</h3>
+                  <div className="flex gap-3 text-xs text-gray-500">
+                    <span>系统 <span className="text-[#4ade80] font-mono">{(() => {
                       const used = status?.system?.memory_used_mb || 0;
                       const total = status?.system?.memory_total_mb || 0;
                       const pct = total > 0 ? ((used / total) * 100).toFixed(1) : '--';
-                      const label = used >= 1024 ? `${(used / 1024).toFixed(1)} GB` : `${used.toFixed(0)} MB`;
-                      return `${label} (${pct}%)`;
-                    })()}</span>
-                  </span>
-                </div>
-                <ResourceChart
-                  data={metricsHistory}
-                  series={[{ dataKey: 'systemMemoryPercent', name: '系统内存', color: '#4ade80', asPercent: true, domain: [0, 100] }]}
-                  height={160}
-                />
-              </div>
-              {/* Process Memory */}
-              <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-400">内存 · 服务进程</h3>
-                  <span className="text-xs text-gray-500">
-                    当前 <span className="text-green-400 font-mono">{(() => {
+                      return `${pct}%`;
+                    })()}</span></span>
+                    <span>进程 <span className="text-[#86efac] font-mono">{(() => {
                       const rss = status?.system?.memory_rss_mb || 0;
-                      const total = status?.system?.memory_total_mb || 0;
-                      const pct = total > 0 ? ((rss / total) * 100).toFixed(1) : '--';
-                      const label = rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
-                      return `${label} (${pct}%)`;
-                    })()}</span>
-                  </span>
+                      return rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
+                    })()}</span></span>
+                  </div>
                 </div>
                 <ResourceChart
                   data={metricsHistory}
-                  series={[{ dataKey: 'memoryPercent', name: '进程内存', color: '#86efac', asPercent: true, domain: [0, 100] }]}
-                  height={160}
+                  series={[
+                    { dataKey: 'systemMemoryPercent', name: '系统', color: '#4ade80', asPercent: true },
+                    { dataKey: 'memoryPercent', name: '进程', color: '#86efac', asPercent: true },
+                  ]}
+                  height={200}
+                  showLegend
                 />
               </div>
             </div>

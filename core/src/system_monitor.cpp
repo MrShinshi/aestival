@@ -57,12 +57,26 @@ double compute_cpu_percent(cpu_cache const& prev, cpu_cache const& cur, int cpu_
 	return (static_cast<double>(proc_delta) / static_cast<double>(sys_delta)) * 100.0 * cpu_count;
 }
 
+double compute_system_cpu(cpu_cache const& prev, cpu_cache const& cur) {
+	auto prev_idle = prev.sys_idle.QuadPart;
+	auto cur_idle  = cur.sys_idle.QuadPart;
+	auto prev_sys  = prev.sys_kernel.QuadPart + prev.sys_user.QuadPart + prev_idle;
+	auto cur_sys   = cur.sys_kernel.QuadPart  + cur.sys_user.QuadPart  + cur_idle;
+
+	auto idle_delta = cur_idle - prev_idle;
+	auto sys_delta  = cur_sys - prev_sys;
+	if (sys_delta == 0)
+		return 0.0;
+	return (1.0 - static_cast<double>(idle_delta) / static_cast<double>(sys_delta)) * 100.0;
+}
+
 #else // Linux
 
 struct cpu_cache {
 	bool valid = false;
 	unsigned long long proc_ticks = 0;
 	unsigned long long sys_ticks = 0;
+	unsigned long long sys_idle = 0;
 };
 cpu_cache g_cpu;
 
@@ -74,13 +88,19 @@ double compute_cpu_percent(cpu_cache const& prev, cpu_cache const& cur) {
 	if (sys_delta == 0 || g_clock_ticks <= 0)
 		return 0.0;
 	// Normalise to per-core percentage so the value matches the Windows
-	// convention (100 % = one fully saturated core).  Without this factor,
-	// a single-threaded process on an 8-core machine reports at most ~12.5 %,
-	// which rounds to 0.0 in the Web UI.
+	// convention (100 % = one fully saturated core).
 	int cpu_count = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
 	if (cpu_count <= 0)
 		cpu_count = 1;
 	return (static_cast<double>(proc_delta) / static_cast<double>(sys_delta)) * 100.0 * cpu_count;
+}
+
+double compute_system_cpu(cpu_cache const& prev, cpu_cache const& cur) {
+	auto total_delta = cur.sys_ticks - prev.sys_ticks;
+	auto idle_delta  = cur.sys_idle  - prev.sys_idle;
+	if (total_delta == 0)
+		return 0.0;
+	return (1.0 - static_cast<double>(idle_delta) / static_cast<double>(total_delta)) * 100.0;
 }
 
 #endif
@@ -127,6 +147,7 @@ system_resource_snapshot collect_system_resources() {
 					SYSTEM_INFO si;
 					GetSystemInfo(&si);
 					snap.cpu_percent_recent = compute_cpu_percent(g_cpu, cur, si.dwNumberOfProcessors);
+					snap.system_cpu_percent = compute_system_cpu(g_cpu, cur);
 				}
 				auto total_proc_100ns = cur.proc_kernel.QuadPart + cur.proc_user.QuadPart;
 				if (elapsed > 0)
@@ -147,11 +168,12 @@ system_resource_snapshot collect_system_resources() {
 			snap.memory_virtual_bytes = static_cast<int64_t>(pmc.PrivateUsage);
 		}
 
-		// System total memory
 		MEMORYSTATUSEX ms;
 		ms.dwLength = sizeof(ms);
-		if (GlobalMemoryStatusEx(&ms))
+		if (GlobalMemoryStatusEx(&ms)) {
 			snap.system_memory_total_bytes = static_cast<int64_t>(ms.ullTotalPhys);
+			snap.system_memory_used_bytes  = static_cast<int64_t>(ms.ullTotalPhys - ms.ullAvailPhys);
+		}
 	}
 
 	// Thread count
@@ -238,6 +260,7 @@ system_resource_snapshot collect_system_resources() {
 
 						// /proc/stat for system-wide CPU totals
 						unsigned long long sys_total = 0;
+						unsigned long long sys_idle = 0;
 						FILE* fs = fopen("/proc/stat", "r");
 						if (fs) {
 							char stat_line[512];
@@ -245,8 +268,11 @@ system_resource_snapshot collect_system_resources() {
 								unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
 								int n = sscanf(stat_line, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
 											   &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal);
-								if (n >= 4)
-									sys_total = user + nice + system + idle + iowait + irq + softirq + ((n >= 8) ? steal : 0);
+								if (n >= 4) {
+									sys_idle = idle + ((n >= 5) ? iowait : 0);
+									sys_total = user + nice + system + idle + iowait +
+												irq + softirq + ((n >= 8) ? steal : 0);
+								}
 							}
 							fclose(fs);
 						}
@@ -258,7 +284,9 @@ system_resource_snapshot collect_system_resources() {
 								cur.valid = true;
 								cur.proc_ticks = proc_ticks;
 								cur.sys_ticks = sys_total;
+								cur.sys_idle = sys_idle;
 								snap.cpu_percent_recent = compute_cpu_percent(g_cpu, cur);
+								snap.system_cpu_percent = compute_system_cpu(g_cpu, cur);
 							}
 							if (g_clock_ticks > 0 && elapsed > 0) {
 								snap.cpu_percent = static_cast<double>(proc_ticks) / g_clock_ticks / elapsed * 100.0;
@@ -268,6 +296,7 @@ system_resource_snapshot collect_system_resources() {
 							}
 							g_cpu.proc_ticks = proc_ticks;
 							g_cpu.sys_ticks = sys_total;
+							g_cpu.sys_idle = sys_idle;
 							g_cpu.valid = true;
 						}
 					}
@@ -276,12 +305,16 @@ system_resource_snapshot collect_system_resources() {
 			fclose(f);
 	}
 
-	// System total memory (Linux)
+	// System total + used memory (Linux)
 #ifdef __linux__
 	{
 		struct sysinfo si;
-		if (sysinfo(&si) == 0)
+		if (sysinfo(&si) == 0) {
 			snap.system_memory_total_bytes = static_cast<int64_t>(si.totalram) * si.mem_unit;
+			auto free_bytes = static_cast<int64_t>(si.freeram) * si.mem_unit;
+			auto buf_bytes  = static_cast<int64_t>(si.bufferram) * si.mem_unit;
+			snap.system_memory_used_bytes = snap.system_memory_total_bytes - free_bytes - buf_bytes;
+		}
 	}
 #endif
 }

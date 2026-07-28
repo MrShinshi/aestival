@@ -53,10 +53,16 @@ export interface AgentInfo {
 }
 
 export interface SystemMetrics {
+  /** Process CPU 0–100, per-core normalised (recent delta). */
   cpu_percent: number;
   cpu_percent_recent?: number;
+  /** Host-wide CPU usage 0–100. */
+  system_cpu_percent?: number;
+  /** Process RSS in MB. */
   memory_rss_mb: number;
   memory_total_mb?: number;
+  /** Host-wide used physical RAM in MB. */
+  memory_used_mb?: number;
   memory_virtual_mb?: number;
   thread_count: number;
   uptime_seconds: number;

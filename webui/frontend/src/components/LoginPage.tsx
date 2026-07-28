@@ -72,8 +72,11 @@ export default function LoginPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
           {/* ── Credential login form ─────────────────────────────── */}
           <form onSubmit={handleCredentialLogin} className="space-y-3">
-            <input
-              type="text"
+            <div>
+              <label htmlFor="login-username" className="block text-xs text-gray-400 mb-1">用户名</label>
+              <input
+                id="login-username"
+                type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="用户名"
@@ -83,8 +86,12 @@ export default function LoginPage() {
               autoComplete="username"
               disabled={submitting}
             />
-            <input
-              type="password"
+            </div>
+            <div>
+              <label htmlFor="login-password" className="block text-xs text-gray-400 mb-1">密码</label>
+              <input
+                id="login-password"
+                type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="密码"
@@ -94,6 +101,7 @@ export default function LoginPage() {
               autoComplete="current-password"
               disabled={submitting}
             />
+            </div>
             <button
               type="submit"
               disabled={submitting || !username.trim() || !password}

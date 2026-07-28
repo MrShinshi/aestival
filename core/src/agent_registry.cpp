@@ -198,7 +198,8 @@ void client::agent_registry::remove_agent(std::string_view id) {
 		if (inst.alive_flag)
 			inst.alive_flag->store(false);
 		inst.controller.reset();
-		inst.im->stop();
+		if (inst.im)
+			inst.im->stop();
 		inst.status = agent_status::stopped;
 	}
 
@@ -259,7 +260,8 @@ void client::agent_registry::stop_agent(std::string_view id) {
 	if (inst.alive_flag)
 		inst.alive_flag->store(false);
 	inst.controller.reset();
-	inst.im->stop();
+	if (inst.im)
+		inst.im->stop();
 	inst.status = agent_status::stopped;
 	log::info("[registry] agent '" + key + "' stopped");
 }

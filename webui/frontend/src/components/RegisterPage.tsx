@@ -83,8 +83,11 @@ export default function RegisterPage() {
 
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
           <form onSubmit={handleRegister} className="space-y-3">
-            <input
-              type="text"
+            <div>
+              <label htmlFor="reg-username" className="block text-xs text-gray-400 mb-1">用户名</label>
+              <input
+                id="reg-username"
+                type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="用户名"
@@ -94,8 +97,12 @@ export default function RegisterPage() {
               autoComplete="username"
               disabled={submitting}
             />
-            <input
-              type="password"
+            </div>
+            <div>
+              <label htmlFor="reg-password" className="block text-xs text-gray-400 mb-1">密码</label>
+              <input
+                id="reg-password"
+                type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="密码（至少 8 个字符）"
@@ -105,8 +112,12 @@ export default function RegisterPage() {
               autoComplete="new-password"
               disabled={submitting}
             />
-            <input
-              type="password"
+            </div>
+            <div>
+              <label htmlFor="reg-confirm" className="block text-xs text-gray-400 mb-1">确认密码</label>
+              <input
+                id="reg-confirm"
+                type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="确认密码"
@@ -116,6 +127,7 @@ export default function RegisterPage() {
               autoComplete="new-password"
               disabled={submitting}
             />
+            </div>
             <button
               type="submit"
               disabled={submitting || !username.trim() || !password || !confirmPassword}

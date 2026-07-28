@@ -172,7 +172,6 @@ int main(int argc, char* argv[]) {
 
 	// Handle shutdown signals.
 	static std::atomic<bool> s_shutdown{false};
-	s_shutdown.store(false);
 	std::signal(SIGINT, [](int) { s_shutdown.store(true); });
 	std::signal(SIGTERM, [](int) { s_shutdown.store(true); });
 

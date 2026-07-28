@@ -91,7 +91,11 @@ export function setAuthCookie(res: Response, token: string): void {
 
 /** Clear the auth cookie. */
 export function clearAuthCookie(res: Response): void {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  res.clearCookie(COOKIE_NAME, {
+    path: '/',
+    secure: config.cookieSecure,
+    sameSite: 'strict',
+  });
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────

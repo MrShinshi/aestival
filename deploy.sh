@@ -95,7 +95,7 @@ if $SYNC_BRANCH; then
   echo ":: syncing '$CURRENT' -> origin/main..."
   git -C "$REPO_ROOT" fetch origin main
   git -C "$REPO_ROOT" reset --hard origin/main
-  git -C "$REPO_ROOT" push --force origin "$CURRENT"
+  git -C "$REPO_ROOT" push --force-with-lease origin "$CURRENT"
   echo ":: done — '$CURRENT' force-pushed to main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
   echo ":: tip: re-apply any local-only config (e.g. bot_config.json tokens)"
   exit 0

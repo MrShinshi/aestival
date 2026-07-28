@@ -6,20 +6,24 @@ export default function Agents() {
   const queryClient = useQueryClient();
   const { data: agents, isLoading } = useQuery({ queryKey: ['agents'], queryFn: api.agents, refetchInterval: 10_000 });
   const [showCreate, setShowCreate] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const startMutation = useMutation({
     mutationFn: (id: string) => api.agentAction(id, 'start'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['agents'] }); setActionError(null); },
+    onError: (err: Error) => setActionError(`启动失败: ${err.message}`),
   });
 
   const stopMutation = useMutation({
     mutationFn: (id: string) => api.agentAction(id, 'stop'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['agents'] }); setActionError(null); },
+    onError: (err: Error) => setActionError(`停止失败: ${err.message}`),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteAgent(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['agents'] }); setActionError(null); },
+    onError: (err: Error) => setActionError(`删除失败: ${err.message}`),
   });
 
   if (isLoading) return <div className="text-gray-400">Loading...</div>;
@@ -35,6 +39,13 @@ export default function Agents() {
           + 新建 Agent
         </button>
       </div>
+
+      {actionError && (
+        <div className="bg-red-900/30 border border-red-800 text-red-400 text-sm rounded px-3 py-2 mb-4">
+          {actionError}
+          <button className="ml-2 text-red-300 hover:text-red-200" onClick={() => setActionError(null)}>✕</button>
+        </div>
+      )}
 
       <div className="space-y-3">
         {agents?.map((a: AgentInfo) => (
@@ -122,7 +133,7 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
         platform: cfg.platform,
         llm_provider: cfg.llm_provider,
       };
-      // QQ credentials (flat keys — C++ accepts both nested and flat now)
+      // QQ credentials
       if (cfg.platform === 'qq') {
         body.qq_app_id = cfg.qq_app_id;
         body.qq_app_secret = cfg.qq_app_secret;
@@ -134,7 +145,9 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
         body.openai_api_key = cfg.openai_api_key;
         body.openai_model = cfg.openai_model;
       }
-      return api.createAgent(body as any);
+      // api.createAgent accepts a partial config; the Record<string, unknown>
+      // conforms to the CreateAgentParams shape at runtime.
+      return api.createAgent(body as Parameters<typeof api.createAgent>[0]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });

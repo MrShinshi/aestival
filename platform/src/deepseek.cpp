@@ -41,6 +41,7 @@ static raw_chat_response send_chat_request(std::string_view api_key, std::string
 	auto const results = resolver.resolve(host, "443");
 	beast::get_lowest_layer(stream).connect(results);
 	stream.handshake(ssl::stream_base::client);
+	platform::detail::set_socket_timeout(stream, 120); // prevent indefinite blocking
 
 	nlohmann::json body = {{"model", std::string(model)}, {"messages", messages}, {"stream", false}};
 	if (tools && tools->is_array() && !tools->empty())
@@ -119,6 +120,7 @@ std::string query_balance(std::string_view api_key, bool verify_tls) {
 	auto const results = resolver.resolve(host, "443");
 	beast::get_lowest_layer(stream).connect(results);
 	stream.handshake(ssl::stream_base::client);
+	platform::detail::set_socket_timeout(stream, 30); // balance query is fast
 
 	http::request<http::empty_body> req{http::verb::get, "/user/balance", 11};
 	req.set(http::field::host, host);
@@ -159,12 +161,14 @@ static nlohmann::json web_api_get(std::string_view host, std::string_view path, 
 	tcp::resolver resolver(ioc);
 	beast::ssl_stream<beast::tcp_stream> stream(ioc, ssl_ctx);
 
-	if (!SSL_set_tlsext_host_name(stream.native_handle(), std::string(host).c_str()))
+	std::string const host_str(host);
+	if (!SSL_set_tlsext_host_name(stream.native_handle(), host_str.c_str()))
 		throw std::runtime_error("failed to set TLS host name for platform.deepseek.com");
 
 	auto const results = resolver.resolve(host, "443");
 	beast::get_lowest_layer(stream).connect(results);
 	stream.handshake(ssl::stream_base::client);
+	platform::detail::set_socket_timeout(stream, 30);
 
 	http::request<http::empty_body> req{http::verb::get, std::string(path), 11};
 	req.set(http::field::host, std::string(host));

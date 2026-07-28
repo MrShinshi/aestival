@@ -162,7 +162,7 @@ set(PCH_HEADER ${CMAKE_SOURCE_DIR}/app/stdafx.h)
 
 # ─── sources per layer ────────────────────────────────────────────────────
 
-set(APP_SOURCES    app/main.cpp app/llm_adapter.cpp app/im_adapter.cpp)
+set(APP_SOURCES    app/main.cpp app/llm_adapter.cpp)
 set(APP_HEADERS   app/stdafx.h)
 
 set(CORE_AGENT     core/src/agent_controller.cpp)

@@ -438,5 +438,6 @@ void client::agent_controller::record_token_usage(nlohmann::json const& usage) {
 	chat_contexts_.record_token_usage(llm_->model_name(), p, c);
 	metrics_.prompt_tokens.fetch_add(p);
 	metrics_.completion_tokens.fetch_add(c);
+	policy_.record_tokens(p, c);
 	log::info("[agent] token: prompt=" + std::to_string(p) + " completion=" + std::to_string(c));
 }

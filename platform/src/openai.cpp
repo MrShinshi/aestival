@@ -55,6 +55,7 @@ static raw_chat_response send_chat_request(std::string_view api_key, std::string
 	auto const results = resolver.resolve(host, "443");
 	beast::get_lowest_layer(stream).connect(results);
 	stream.handshake(ssl::stream_base::client);
+	platform::detail::set_socket_timeout(stream, 120); // prevent indefinite blocking
 
 	nlohmann::json body = {{"model", std::string(model)}, {"messages", messages}, {"stream", false}};
 	if (tools && tools->is_array() && !tools->empty())

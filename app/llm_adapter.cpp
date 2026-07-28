@@ -22,8 +22,10 @@ static nlohmann::json build_messages_json(std::vector<client::chat_message> cons
 			try {
 				j["tool_calls"] = nlohmann::json::parse(m.tool_calls_json);
 				j["content"] = nullptr;
-			} catch (...) {
-				client::log::warn("[llm_adapter] failed to parse tool_calls_json");
+			} catch (nlohmann::json::exception const&) {
+				client::log::warn("[llm_adapter] failed to parse tool_calls_json — keeping content as-is");
+				// Don't clear content — a message with content but no tool_calls
+				// is still valid, unlike an empty message with neither.
 			}
 		}
 		arr.push_back(std::move(j));
@@ -100,7 +102,7 @@ struct deepseek_adapter : client::model_client {
 			j["cost"] = std::move(cost);
 			return j.dump();
 		} catch (std::exception const& ex) {
-			return std::string("{\"error\":\"") + ex.what() + "\"}";
+			return nlohmann::json{{"error", ex.what()}}.dump();
 		}
 	}
 };

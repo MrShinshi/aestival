@@ -33,6 +33,7 @@ webui/backend/dist/
 .env
 .env.*
 .deploy_config
+config/bot_config.json
 
 # logs
 *.log

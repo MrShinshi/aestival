@@ -134,6 +134,10 @@ export async function registerWithPassword(
  * Returns the User on success, null on failure.  Does NOT distinguish
  * between "wrong username" and "wrong password" — prevents enumeration.
  */
+// Fixed dummy hash for constant-time comparison when the user does not exist.
+// Pre-computed bcrypt hash of "dummy" at 12 rounds — never matches a real password.
+const DUMMY_HASH = '$2a$12$LJ3m4ys3LkBCVxJGqOjPkuYVOYpGOKbHgEMoJxYzRqcMdFNP2sKuS';
+
 export async function loginWithPassword(
   username: string,
   password: string,
@@ -149,7 +153,13 @@ export async function loginWithPassword(
     )
     .get(username.trim()) as any;
 
-  if (!row) return null;
+  if (!row) {
+    // Constant-time dummy comparison to prevent username enumeration
+    // via timing side-channel.  bcrypt is ~250ms; without this the
+    // "user not found" path returns in ~1ms — trivially observable.
+    await verifyPassword(password, DUMMY_HASH);
+    return null;
+  }
 
   const valid = await verifyPassword(password, row.password_hash);
   if (!valid) return null;

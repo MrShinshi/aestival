@@ -260,8 +260,12 @@ system_resource_snapshot collect_system_resources() {
 								cur.sys_ticks = sys_total;
 								snap.cpu_percent_recent = compute_cpu_percent(g_cpu, cur);
 							}
-							if (g_clock_ticks > 0 && elapsed > 0)
+							if (g_clock_ticks > 0 && elapsed > 0) {
 								snap.cpu_percent = static_cast<double>(proc_ticks) / g_clock_ticks / elapsed * 100.0;
+								int ncpu = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+								if (ncpu > 0)
+									snap.cpu_percent *= ncpu;
+							}
 							g_cpu.proc_ticks = proc_ticks;
 							g_cpu.sys_ticks = sys_total;
 							g_cpu.valid = true;

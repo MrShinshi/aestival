@@ -1,21 +1,26 @@
 /**
- * Real-time resource line chart — renders CPU % and Memory usage as dual-axis
- * dynamic lines with a sliding time window.
- *
- * Mimics Windows Task Manager's Performance tab:
- *  - X axis shows relative seconds ago (rightmost = now, leftmost = oldest).
- *  - Data points enter from the right and scroll left as time advances.
- *  - Smooth 400 ms animation on every update.
+ * Generic real-time line chart — wall-clock X axis, scrolling right.
+ * Used for CPU % and Memory % — same visual language as TokenChart.
  */
 import { useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
-import type { MetricsPoint } from '../hooks/useMetricsHistory';
+
+export interface SeriesConfig {
+  dataKey: string;
+  name: string;
+  color: string;
+  /** true → format as "12.3%", false → format as "1.2 GB" */
+  asPercent?: boolean;
+  /** Fixed Y-axis domain. */
+  domain?: [number, number];
+}
 
 interface ResourceChartProps {
-  data: MetricsPoint[];
+  data: any[];
+  series: SeriesConfig[];
   height?: number;
 }
 
@@ -24,20 +29,7 @@ function fmtMB(mb: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
-export default function ResourceChart({ data, height = 200 }: ResourceChartProps) {
-  const memDomain = useMemo(() => {
-    if (data.length === 0) return [0, 100] as [number, number];
-    const values = data.map(d => d.memoryRssMb);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const pad = Math.max((max - min) * 0.2, 50);
-    return [
-      Math.max(0, Math.floor(min - pad)),
-      Math.ceil(max + pad),
-    ] as [number, number];
-  }, [data]);
-
-  // Show ~6 tick labels evenly spaced across the time window.
+export default function ResourceChart({ data, series, height = 200 }: ResourceChartProps) {
   const tickInterval = useMemo(() => {
     if (data.length <= 6) return 0;
     return Math.max(1, Math.floor(data.length / 6));
@@ -54,42 +46,27 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-        <defs>
-          <linearGradient id="cpuLineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
-          </linearGradient>
-          <linearGradient id="memLineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#4ade80" stopOpacity={0.2} />
-            <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
-          </linearGradient>
-        </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-        {/* X axis: relative seconds ago.  Newest data is rightmost; the line
-             extends leftward as time advances (Task Manager style). */}
         <XAxis
-          dataKey="timeLabel"
+          dataKey="time"
           tick={{ fill: '#9ca3af', fontSize: 10 }}
           interval={tickInterval}
         />
-        {/* CPU axis — left, fixed 0–100 % */}
-        <YAxis
-          yAxisId="cpu"
-          orientation="left"
-          tick={{ fill: '#818cf8', fontSize: 10 }}
-          domain={[0, 100]}
-          unit="%"
-          width={42}
-        />
-        {/* Memory axis — right, auto-scaled with padding */}
-        <YAxis
-          yAxisId="mem"
-          orientation="right"
-          tick={{ fill: '#4ade80', fontSize: 10 }}
-          domain={memDomain}
-          tickFormatter={(v: number) => (v >= 1024 ? `${(v / 1024).toFixed(1)}G` : `${v.toFixed(0)}M`)}
-          width={50}
-        />
+        {series.map(s => (
+          <YAxis
+            key={`y-${s.dataKey}`}
+            yAxisId={s.dataKey}
+            orientation={s.dataKey === series[0].dataKey ? 'left' : 'right'}
+            tick={{ fill: s.color, fontSize: 10 }}
+            domain={s.domain || [0, 'auto']}
+            unit={s.asPercent ? '%' : undefined}
+            tickFormatter={v => {
+            if (!s.asPercent) return fmtMB(v as number);
+            return `${v}%`;
+          }}
+            width={48}
+          />
+        ))}
         <Tooltip
           contentStyle={{
             backgroundColor: '#1f2937',
@@ -100,37 +77,28 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
           labelStyle={{ color: '#9ca3af' }}
           formatter={(value, name) => {
             const num = typeof value === 'number' ? value : 0;
-            if (name === 'CPU %') return [`${num.toFixed(1)}%`, name];
-            return [fmtMB(num), name];
+            const label = typeof name === 'string' ? name : '';
+            const cfg = series.find(s => s.name === label);
+            if (cfg?.asPercent) return [`${num.toFixed(1)}%`, label];
+            return [fmtMB(num), label];
           }}
         />
-        <Legend wrapperStyle={{ fontSize: '12px', color: '#9ca3af' }} />
-        <Line
-          yAxisId="cpu"
-          type="monotone"
-          dataKey="cpuPercent"
-          name="CPU %"
-          stroke="#818cf8"
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 3, fill: '#818cf8' }}
-          isAnimationActive={true}
-          animationDuration={400}
-          animationEasing="ease-out"
-        />
-        <Line
-          yAxisId="mem"
-          type="monotone"
-          dataKey="memoryRssMb"
-          name="内存"
-          stroke="#4ade80"
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 3, fill: '#4ade80' }}
-          isAnimationActive={true}
-          animationDuration={400}
-          animationEasing="ease-out"
-        />
+        {series.map(s => (
+          <Line
+            key={s.dataKey}
+            yAxisId={s.dataKey}
+            type="monotone"
+            dataKey={s.dataKey}
+            name={s.name}
+            stroke={s.color}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 3, fill: s.color }}
+            isAnimationActive={true}
+            animationDuration={400}
+            animationEasing="ease-out"
+          />
+        ))}
       </LineChart>
     </ResponsiveContainer>
   );

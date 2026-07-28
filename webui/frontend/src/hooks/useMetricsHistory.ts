@@ -1,86 +1,77 @@
 /**
  * Custom hook: polls api.status() every 2 seconds and accumulates a rolling
- * window of CPU / memory data points for the real-time line chart.
+ * window of CPU / memory data points.
  *
- * The latest N points are kept; each point carries a relative second offset
- * (seconds ago) so the chart X-axis can show "2:00 ... 0:00" Task-Manager-style.
+ * Each point carries an absolute wall-clock timestamp for standard
+ * time-series chart display (newest data on the right, old scrolls left).
  */
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 
 export interface MetricsPoint {
-  /** Relative seconds ago (0 = now, positive = older). */
-  secondsAgo: number;
-  /** Formatted label like "1:30" or "0:05". */
-  timeLabel: string;
+  /** Absolute wall-clock label: "14:32:05". */
+  time: string;
+  /** Epoch ms for dedup / ordering. */
+  timestamp: number;
   cpuPercent: number;
   memoryRssMb: number;
   memoryTotalMb: number;
+  /** RSS as percentage of system total (0–100). 0 when total unknown. */
+  memoryPercent: number;
 }
 
-const DEFAULT_MAX_POINTS = 60;  // 2 minutes at 2-second intervals
 const POLL_MS = 2000;
+const WINDOW_SECS = 120; // show last 2 minutes
+const MAX_POINTS = WINDOW_SECS * 1000 / POLL_MS; // ~60
 
-export function useMetricsHistory(maxPoints: number = DEFAULT_MAX_POINTS) {
+export function useMetricsHistory(maxPoints: number = MAX_POINTS) {
   const [history, setHistory] = useState<MetricsPoint[]>([]);
-  // Keep a mutable ref because the "seconds ago" field shifts every tick.
-  const bufferRef = useRef<{ ts: number; cpu: number; rss: number; total: number }[]>([]);
+  const bufferRef = useRef<MetricsPoint[]>([]);
 
-  const rebuild = useCallback((raw: typeof bufferRef.current) => {
-    const now = Date.now();
-    const points: MetricsPoint[] = raw.map(r => {
-      const ago = Math.round((now - r.ts) / 1000);
-      const m = Math.floor(ago / 60);
-      const s = ago % 60;
-      return {
-        secondsAgo: ago,
-        timeLabel: `${m}:${String(s).padStart(2, '0')}`,
-        cpuPercent: r.cpu,
-        memoryRssMb: r.rss,
-        memoryTotalMb: r.total,
-      };
+  const fmtTime = useCallback((ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
     });
-    setHistory(points);
   }, []);
 
   useEffect(() => {
     let active = true;
-    let ticker: ReturnType<typeof setInterval> | undefined;
 
     const poll = async () => {
       try {
         const status = await api.status();
         if (!active || !status?.system) return;
 
-        const raw = bufferRef.current;
-        raw.push({
-          ts: Date.now(),
-          cpu: status.system.cpu_percent,
-          rss: status.system.memory_rss_mb,
-          total: status.system.memory_total_mb || 0,
-        });
-        if (raw.length > maxPoints) raw.splice(0, raw.length - maxPoints);
+        const now = Date.now();
+        const rss = status.system.memory_rss_mb;
+        const total = status.system.memory_total_mb || 0;
+        const point: MetricsPoint = {
+          time: fmtTime(now),
+          timestamp: now,
+          cpuPercent: status.system.cpu_percent,
+          memoryRssMb: rss,
+          memoryTotalMb: total,
+          memoryPercent: total > 0 ? (rss / total) * 100 : 0,
+        };
 
-        rebuild(raw);
+        bufferRef.current = [...bufferRef.current, point].slice(-maxPoints);
+        setHistory(bufferRef.current);
       } catch {
-        // Transient errors are ignored; chart keeps the last known window.
+        // Transient errors are ignored.
       }
     };
 
     poll();
-    const pollTimer = setInterval(poll, POLL_MS);
-
-    // Also re-label every 2 s so the "seconds ago" labels stay accurate
-    // without needing a new data point — important when the process is idle
-    // and CPU/memory barely change.
-    ticker = setInterval(() => rebuild(bufferRef.current), 2000);
-
+    const timer = setInterval(poll, POLL_MS);
     return () => {
       active = false;
-      clearInterval(pollTimer);
-      if (ticker) clearInterval(ticker);
+      clearInterval(timer);
     };
-  }, [maxPoints, rebuild]);
+  }, [maxPoints, fmtTime]);
 
   return history;
 }

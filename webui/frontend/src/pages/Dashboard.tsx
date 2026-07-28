@@ -110,38 +110,38 @@ export default function Dashboard() {
 
           {/* CPU + Memory side by side — each chart overlays system & process */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* CPU */}
+              {/* CPU — shared Y axis, indigo system + amber process */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-400">CPU</h3>
                   <div className="flex gap-3 text-xs text-gray-500">
-                    <span>系统 <span className="text-[#818cf8] font-mono">{status?.system?.system_cpu_percent?.toFixed(1) ?? '--'}%</span></span>
-                    <span>进程 <span className="text-[#a78bfa] font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                    <span>系统 <span className="text-indigo-400 font-mono">{status?.system?.system_cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                    <span>进程 <span className="text-amber-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span></span>
                   </div>
                 </div>
                 <ResourceChart
                   data={metricsHistory}
                   series={[
-                    { dataKey: 'systemCpuPercent', name: '系统', color: '#818cf8', asPercent: true },
-                    { dataKey: 'cpuPercent', name: '进程', color: '#a78bfa', asPercent: true },
+                    { dataKey: 'systemCpuPercent', name: '系统', color: '#818cf8' },
+                    { dataKey: 'cpuPercent', name: '进程', color: '#f59e0b' },
                   ]}
                   height={200}
                   showLegend
                 />
               </div>
 
-              {/* Memory */}
+              {/* Memory — shared Y axis, cyan system + rose process */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-400">内存</h3>
                   <div className="flex gap-3 text-xs text-gray-500">
-                    <span>系统 <span className="text-[#4ade80] font-mono">{(() => {
+                    <span>系统 <span className="text-cyan-400 font-mono">{(() => {
                       const used = status?.system?.memory_used_mb || 0;
                       const total = status?.system?.memory_total_mb || 0;
                       const pct = total > 0 ? ((used / total) * 100).toFixed(1) : '--';
                       return `${pct}%`;
                     })()}</span></span>
-                    <span>进程 <span className="text-[#86efac] font-mono">{(() => {
+                    <span>进程 <span className="text-rose-400 font-mono">{(() => {
                       const rss = status?.system?.memory_rss_mb || 0;
                       return rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
                     })()}</span></span>
@@ -150,8 +150,8 @@ export default function Dashboard() {
                 <ResourceChart
                   data={metricsHistory}
                   series={[
-                    { dataKey: 'systemMemoryPercent', name: '系统', color: '#4ade80', asPercent: true },
-                    { dataKey: 'memoryPercent', name: '进程', color: '#86efac', asPercent: true },
+                    { dataKey: 'systemMemoryPercent', name: '系统', color: '#22d3ee' },
+                    { dataKey: 'memoryPercent', name: '进程', color: '#f43f5e' },
                   ]}
                   height={200}
                   showLegend

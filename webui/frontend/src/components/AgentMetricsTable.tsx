@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { api, type AgentWithMetrics, type AgentMetricsDetail } from '../lib/api';
+import { useUptime, fmtUptime } from '../hooks/useUptime';
 
 interface AgentMetricsTableProps {
   agents: AgentWithMetrics[];
@@ -11,16 +12,6 @@ function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-function fmtUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  if (d > 0) return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 function statusBadge(status: string) {
@@ -49,6 +40,7 @@ function ExpandedRow({ agentId }: { agentId: string }) {
   if (q.error) return <div className="text-red-400 p-2 text-xs">{(q.error as Error).message}</div>;
 
   const m: AgentMetricsDetail | undefined = q.data?.metrics;
+  const liveUptime = useUptime(m?.uptime_seconds);
   if (!m) return null;
 
   return (
@@ -60,8 +52,8 @@ function ExpandedRow({ agentId }: { agentId: string }) {
       {m.last_message_at && (
         <div><span className="text-xs text-gray-500">最后消息</span><div className="text-sm text-gray-200">{new Date(m.last_message_at).toLocaleString()}</div></div>
       )}
-      {m.uptime_seconds !== undefined && (
-        <div><span className="text-xs text-gray-500">运行时间</span><div className="text-sm text-gray-200">{fmtUptime(m.uptime_seconds)}</div></div>
+      {liveUptime !== undefined && (
+        <div><span className="text-xs text-gray-500">运行时间</span><div className="text-sm text-gray-200">{fmtUptime(liveUptime)}</div></div>
       )}
     </div>
   );

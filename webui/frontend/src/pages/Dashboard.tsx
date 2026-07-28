@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api, type AgentInfo } from '../lib/api';
 import { useMetricsHistory } from '../hooks/useMetricsHistory';
+import { useUptime, fmtUptime } from '../hooks/useUptime';
 import StatCard from '../components/StatCard';
 import ResourceChart from '../components/ResourceChart';
 import TokenChart from '../components/TokenChart';
@@ -18,16 +19,6 @@ const tabs: { key: Tab; label: string; icon: React.ComponentType<{ size?: number
   { key: 'agents', label: 'Agent 资源', icon: Cpu },
   { key: 'tokens', label: 'Token 用量', icon: BarChart3 },
 ];
-
-function fmtUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  if (d > 0) return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
-}
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -49,6 +40,7 @@ export default function Dashboard() {
   const agents: AgentInfo[] = agentsQ.data || [];
   const metrics = metricsQ.data;
   const tokens = tokensQ.data || [];
+  const liveUptime = useUptime(status?.uptime_seconds);
 
   const error = statusQ.error || agentsQ.error;
   const runningCount = agents.filter(a => a.status === 'running').length;
@@ -97,7 +89,7 @@ export default function Dashboard() {
             <StatCard label="异常" value={errorCount} color={errorCount > 0 ? 'red' : 'gray'} icon={Activity} />
             <StatCard
               label="正常运行时间"
-              value={status ? fmtUptime(status.uptime_seconds) : '--'}
+              value={liveUptime !== undefined ? fmtUptime(liveUptime) : '--'}
               color="blue"
               icon={Clock}
             />

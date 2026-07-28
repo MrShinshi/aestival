@@ -2,66 +2,85 @@
  * Custom hook: polls api.status() every 2 seconds and accumulates a rolling
  * window of CPU / memory data points for the real-time line chart.
  *
- * 2-second polling + smooth line animation mimics the Windows Task Manager
- * Performance tab feel.
+ * The latest N points are kept; each point carries a relative second offset
+ * (seconds ago) so the chart X-axis can show "2:00 ... 0:00" Task-Manager-style.
  */
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 
 export interface MetricsPoint {
-  time: string;       // HH:MM:SS label for the X axis
-  timestamp: number;  // epoch ms (for dedup / ordering)
+  /** Relative seconds ago (0 = now, positive = older). */
+  secondsAgo: number;
+  /** Formatted label like "1:30" or "0:05". */
+  timeLabel: string;
   cpuPercent: number;
   memoryRssMb: number;
   memoryTotalMb: number;
-  memoryPercent: number; // RSS / total * 100, 0 when total is unknown
 }
 
 const DEFAULT_MAX_POINTS = 60;  // 2 minutes at 2-second intervals
+const POLL_MS = 2000;
 
 export function useMetricsHistory(maxPoints: number = DEFAULT_MAX_POINTS) {
   const [history, setHistory] = useState<MetricsPoint[]>([]);
-  const bufferRef = useRef<MetricsPoint[]>([]);
+  // Keep a mutable ref because the "seconds ago" field shifts every tick.
+  const bufferRef = useRef<{ ts: number; cpu: number; rss: number; total: number }[]>([]);
+
+  const rebuild = useCallback((raw: typeof bufferRef.current) => {
+    const now = Date.now();
+    const points: MetricsPoint[] = raw.map(r => {
+      const ago = Math.round((now - r.ts) / 1000);
+      const m = Math.floor(ago / 60);
+      const s = ago % 60;
+      return {
+        secondsAgo: ago,
+        timeLabel: `${m}:${String(s).padStart(2, '0')}`,
+        cpuPercent: r.cpu,
+        memoryRssMb: r.rss,
+        memoryTotalMb: r.total,
+      };
+    });
+    setHistory(points);
+  }, []);
 
   useEffect(() => {
     let active = true;
+    let ticker: ReturnType<typeof setInterval> | undefined;
 
     const poll = async () => {
       try {
         const status = await api.status();
         if (!active || !status?.system) return;
 
-        const now = new Date();
-        const total = status.system.memory_total_mb || 0;
-        const point: MetricsPoint = {
-          time: now.toLocaleTimeString('zh-CN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-          }),
-          timestamp: now.getTime(),
-          cpuPercent: status.system.cpu_percent,
-          memoryRssMb: status.system.memory_rss_mb,
-          memoryTotalMb: total,
-          memoryPercent: total > 0 ? (status.system.memory_rss_mb / total) * 100 : 0,
-        };
+        const raw = bufferRef.current;
+        raw.push({
+          ts: Date.now(),
+          cpu: status.system.cpu_percent,
+          rss: status.system.memory_rss_mb,
+          total: status.system.memory_total_mb || 0,
+        });
+        if (raw.length > maxPoints) raw.splice(0, raw.length - maxPoints);
 
-        bufferRef.current = [...bufferRef.current, point].slice(-maxPoints);
-        setHistory(bufferRef.current);
+        rebuild(raw);
       } catch {
-        // Ignore transient poll errors so the chart keeps the last-known data.
+        // Transient errors are ignored; chart keeps the last known window.
       }
     };
 
-    poll(); // immediate first sample
-    const interval = setInterval(poll, 2000);
+    poll();
+    const pollTimer = setInterval(poll, POLL_MS);
+
+    // Also re-label every 2 s so the "seconds ago" labels stay accurate
+    // without needing a new data point — important when the process is idle
+    // and CPU/memory barely change.
+    ticker = setInterval(() => rebuild(bufferRef.current), 2000);
 
     return () => {
       active = false;
-      clearInterval(interval);
+      clearInterval(pollTimer);
+      if (ticker) clearInterval(ticker);
     };
-  }, [maxPoints]);
+  }, [maxPoints, rebuild]);
 
   return history;
 }

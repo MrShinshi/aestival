@@ -2,11 +2,10 @@
  * Real-time resource line chart — renders CPU % and Memory usage as dual-axis
  * dynamic lines with a sliding time window.
  *
- * Styled to feel like Windows Task Manager's Performance tab: smooth
- * animation on every new data point, subtle gradient fill, clean grid.
- *
- * Uses recharts (already in the project) with the same dark-theme styling as
- * TokenChart so the dashboard reads as one consistent system.
+ * Mimics Windows Task Manager's Performance tab:
+ *  - X axis shows relative seconds ago (rightmost = now, leftmost = oldest).
+ *  - Data points enter from the right and scroll left as time advances.
+ *  - Smooth 400 ms animation on every update.
  */
 import { useMemo } from 'react';
 import {
@@ -26,7 +25,6 @@ function fmtMB(mb: number): string {
 }
 
 export default function ResourceChart({ data, height = 200 }: ResourceChartProps) {
-  // Compute memory Y-axis domain so the line doesn't hug the baseline.
   const memDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as [number, number];
     const values = data.map(d => d.memoryRssMb);
@@ -39,10 +37,10 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
     ] as [number, number];
   }, [data]);
 
-  // Show sparser X-axis ticks — every ~10 seconds (every 5th point at 2s intervals).
+  // Show ~6 tick labels evenly spaced across the time window.
   const tickInterval = useMemo(() => {
-    if (data.length <= 10) return 0; // show all when there's little data
-    return Math.max(1, Math.floor(data.length / 8));
+    if (data.length <= 6) return 0;
+    return Math.max(1, Math.floor(data.length / 6));
   }, [data.length]);
 
   if (data.length === 0) {
@@ -67,8 +65,10 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+        {/* X axis: relative seconds ago.  Newest data is rightmost; the line
+             extends leftward as time advances (Task Manager style). */}
         <XAxis
-          dataKey="time"
+          dataKey="timeLabel"
           tick={{ fill: '#9ca3af', fontSize: 10 }}
           interval={tickInterval}
         />
@@ -104,10 +104,7 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
             return [fmtMB(num), name];
           }}
         />
-        <Legend
-          wrapperStyle={{ fontSize: '12px', color: '#9ca3af' }}
-        />
-        {/* CPU line with smooth Task-Manager-style animation */}
+        <Legend wrapperStyle={{ fontSize: '12px', color: '#9ca3af' }} />
         <Line
           yAxisId="cpu"
           type="monotone"
@@ -121,7 +118,6 @@ export default function ResourceChart({ data, height = 200 }: ResourceChartProps
           animationDuration={400}
           animationEasing="ease-out"
         />
-        {/* Memory line */}
         <Line
           yAxisId="mem"
           type="monotone"

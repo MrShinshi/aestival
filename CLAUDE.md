@@ -65,7 +65,7 @@ AESTIVAL_HOST_KEY="ssh-ed25519 AAAA..."
 ./deploy.sh --sync
 ```
 
-CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过 SSH 完成。部署所需的服务器 IP 和主机密钥通过 GitHub Secrets（`DEPLOY_HOST`、`DEPLOY_HOST_KEY`）注入。
+CI 在推送 `shinshi` 分支时自动部署（仅 Linux GCC Release），通过 SSH 完成。部署所需的服务器 IP 通过 GitHub Secret（`DEPLOY_HOST`）注入。
 
 ### 依赖（vcpkg）
 

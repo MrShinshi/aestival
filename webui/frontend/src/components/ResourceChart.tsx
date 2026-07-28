@@ -42,7 +42,7 @@ export default function ResourceChart({ data, series, height = 200, showLegend =
     for (const pt of data) {
       for (const s of series) {
         const v = pt[s.dataKey];
-        if (typeof v === 'number' && v > maxVal) maxVal = v;
+        if (v != null && typeof v === 'number' && v > maxVal) maxVal = v;
       }
     }
     return [0, niceCeil(maxVal * 1.15)];

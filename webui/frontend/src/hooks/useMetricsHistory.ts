@@ -2,8 +2,9 @@
  * Custom hook: polls api.status() every 2 seconds and accumulates a rolling
  * window of CPU / memory data points — both process-level and system-wide.
  *
- * The buffer is pre-seeded with 60 padding slots spanning the last 2 minutes
- * so the X-axis is immediately full-width from the first render.
+ * The buffer is pre-seeded with padding slots so the X-axis is full-width
+ * from the first render.  Seed values are null — recharts skips them, so
+ * lines only appear where real data has arrived.
  */
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
@@ -12,19 +13,19 @@ export interface MetricsPoint {
   time: string;
   timestamp: number;
 
-  systemCpuPercent: number;
-  cpuPercent: number;
+  systemCpuPercent: number | null;
+  cpuPercent: number | null;
 
-  systemMemoryPercent: number;
-  memoryPercent: number;
+  systemMemoryPercent: number | null;
+  memoryPercent: number | null;
 
-  systemMemoryUsedMb: number;
-  memoryRssMb: number;
-  memoryTotalMb: number;
+  systemMemoryUsedMb: number | null;
+  memoryRssMb: number | null;
+  memoryTotalMb: number | null;
 }
 
 const POLL_MS = 2000;
-const WINDOW_MS = 120_000; // 2 minutes
+const WINDOW_MS = 120_000;      // 2 minutes
 const MAX_POINTS = WINDOW_MS / POLL_MS; // 60
 
 function makeTime(ts: number): string {
@@ -34,7 +35,7 @@ function makeTime(ts: number): string {
   });
 }
 
-/** Build a full dummy window so the X axis is 2 min wide from the start. */
+/** Full-width padding slots — X axis has 2 min span, but no line rendered. */
 function seedBuffer(): MetricsPoint[] {
   const now = Date.now();
   const pts: MetricsPoint[] = [];
@@ -43,13 +44,13 @@ function seedBuffer(): MetricsPoint[] {
     pts.push({
       time: makeTime(t),
       timestamp: t,
-      systemCpuPercent: 0,
-      cpuPercent: 0,
-      systemMemoryPercent: 0,
-      memoryPercent: 0,
-      systemMemoryUsedMb: 0,
-      memoryRssMb: 0,
-      memoryTotalMb: 0,
+      systemCpuPercent: null,
+      cpuPercent: null,
+      systemMemoryPercent: null,
+      memoryPercent: null,
+      systemMemoryUsedMb: null,
+      memoryRssMb: null,
+      memoryTotalMb: null,
     });
   }
   return pts;

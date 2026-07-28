@@ -15,7 +15,7 @@ namespace client {
 //
 // Minimal utility: synchronous subprocess execution and PATH probing.
 //
-// All search/fetch tools have moved to MCP servers (mcporter, etc.).
+// All search/fetch tools have moved to MCP servers (mcporter, agent-reach, etc.).
 // This class now only serves self_iteration_engine which needs shell
 // access for `claude -p` and `git` commands.
 

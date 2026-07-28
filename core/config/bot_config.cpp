@@ -100,11 +100,11 @@ client::agent_config parse_agent(nlohmann::json const& j) {
 				mcp.startup_timeout = std::chrono::seconds(to->get<int>());
 			if (auto to = s.find("call_timeout"); to != s.end() && to->is_number())
 				mcp.call_timeout = std::chrono::seconds(to->get<int>());
-				if (auto env = s.find("env"); env != s.end() && env->is_object()) {
-					for (auto const& [k, v] : env->items())
-						if (v.is_string())
-							mcp.env[k] = v.get<std::string>();
-				}
+			if (auto env = s.find("env"); env != s.end() && env->is_object()) {
+				for (auto const& [k, v] : env->items())
+					if (v.is_string())
+						mcp.env[k] = v.get<std::string>();
+			}
 			if (!mcp.name.empty() && !mcp.command.empty())
 				a.mcp_servers.push_back(std::move(mcp));
 		}
@@ -244,11 +244,12 @@ std::string client::to_json(bot_config const& cfg) {
 		j["workspace"] = a.workspace;
 		j["storage_dir"] = a.storage_dir;
 
-		if (!a.admin_user_ids.empty()) {
-			auto adm = nlohmann::json::array();
-			for (auto const& id : a.admin_user_ids)
-				adm.push_back(id);
-			j["admins"] = std::move(adm);
+		// Admins
+		{
+			auto admins = nlohmann::json::array();
+			for (auto const& uid : a.admin_user_ids)
+				admins.push_back(uid);
+			j["admins"] = std::move(admins);
 		}
 
 		j["mode"] = a.default_mode == runtime_mode::agent ? "agent" : "plugin";
@@ -256,7 +257,8 @@ std::string client::to_json(bot_config const& cfg) {
 		j["max_messages_per_minute"] = a.max_messages_per_minute;
 		j["daily_token_budget"] = a.daily_token_budget;
 
-		{
+		if (a.self_iterate_enabled || a.self_iterate_interval_hours != 24 ||
+			a.self_iterate_min_conversations != 10 || a.claude_code_path != "claude") {
 			auto si = nlohmann::json::object();
 			si["enabled"] = a.self_iterate_enabled;
 			si["interval_hours"] = a.self_iterate_interval_hours;
@@ -295,38 +297,27 @@ std::string client::to_json(bot_config const& cfg) {
 
 	// global
 	{
-		auto g = nlohmann::json::object();
-		g["verify_tls"] = cfg.global.verify_tls;
-		if (!cfg.global.log_file.empty())
-			g["log_file"] = cfg.global.log_file;
+		auto gj = nlohmann::json::object();
+		gj["verify_tls"] = cfg.global.verify_tls;
+		gj["log_file"] = cfg.global.log_file;
 
-		auto mgmt = nlohmann::json::object();
-		mgmt["enabled"] = cfg.global.management_api_enabled;
-		mgmt["listen"] = cfg.global.management_listen;
-		mgmt["jwt_secret"] = cfg.global.jwt_secret;
-		g["management_api"] = std::move(mgmt);
+		{
+			auto mgmt = nlohmann::json::object();
+			mgmt["enabled"] = cfg.global.management_api_enabled;
+			mgmt["listen"] = cfg.global.management_listen;
+			mgmt["jwt_secret"] = cfg.global.jwt_secret;
+			gj["management_api"] = std::move(mgmt);
+		}
 
-		root["global"] = std::move(g);
+		root["global"] = std::move(gj);
 	}
 
 	return root.dump(2);
 }
 
-// ─── save_bot_config ───────────────────────────────────────────────────────
-// Atomic write: write temp file first, then rename.
-
 void client::save_bot_config(std::string const& path, bot_config const& cfg) {
-	auto tmp = path + ".tmp";
-	{
-		std::ofstream out(tmp);
-		if (!out)
-			throw std::runtime_error("failed to open temp config for writing: " + tmp);
-		out << to_json(cfg);
-		if (!out)
-			throw std::runtime_error("failed to write temp config: " + tmp);
-	}
-	std::error_code ec;
-	std::filesystem::rename(tmp, path, ec);
-	if (ec)
-		throw std::runtime_error("failed to rename temp config: " + ec.message());
+	std::ofstream stream(path);
+	if (!stream)
+		throw std::runtime_error("failed to open config file for writing: " + path);
+	stream << to_json(cfg);
 }

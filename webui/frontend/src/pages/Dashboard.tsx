@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Cpu, BarChart3, Activity, MessageSquare,
@@ -45,6 +45,15 @@ export default function Dashboard() {
   const error = statusQ.error || agentsQ.error;
   const runningCount = agents.filter(a => a.status === 'running').length;
   const errorCount = agents.filter(a => a.status === 'error').length;
+
+  // Latest real-time point from 1-second history (instant, not average)
+  const latestPoint = useMemo(() => {
+    for (let i = metricsHistory.length - 1; i >= 0; i--) {
+      const p = metricsHistory[i];
+      if (p.cpuPercent !== null || p.memoryPercent !== null) return p;
+    }
+    return null;
+  }, [metricsHistory]);
 
   // Token aggregate for the overview tab
   const totalPrompt = tokens.reduce((s, t) => s + t.prompt_tokens, 0);
@@ -108,8 +117,8 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-400">CPU</h3>
                   <div className="flex gap-3 text-xs text-gray-500">
-                    <span>系统 <span className="text-indigo-400 font-mono">{status?.system?.system_cpu_percent?.toFixed(1) ?? '--'}%</span></span>
-                    <span>进程 <span className="text-amber-400 font-mono">{status?.system?.cpu_percent?.toFixed(1) ?? '--'}%</span></span>
+                    <span>系统 <span className="text-indigo-400 font-mono">{latestPoint?.systemCpuPercent?.toFixed(1) ?? '--'}%</span></span>
+                    <span>进程 <span className="text-amber-400 font-mono">{latestPoint?.cpuPercent?.toFixed(1) ?? '--'}%</span></span>
                   </div>
                 </div>
                 <ResourceChart
@@ -128,14 +137,10 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-400">内存</h3>
                   <div className="flex gap-3 text-xs text-gray-500">
-                    <span>系统 <span className="text-cyan-400 font-mono">{(() => {
-                      const used = status?.system?.memory_used_mb || 0;
-                      const total = status?.system?.memory_total_mb || 0;
-                      const pct = total > 0 ? ((used / total) * 100).toFixed(1) : '--';
-                      return `${pct}%`;
-                    })()}</span></span>
+                    <span>系统 <span className="text-cyan-400 font-mono">{latestPoint?.systemMemoryPercent?.toFixed(1) ?? '--'}%</span></span>
                     <span>进程 <span className="text-orange-400 font-mono">{(() => {
-                      const rss = status?.system?.memory_rss_mb || 0;
+                      const rss = latestPoint?.memoryRssMb ?? 0;
+                      if (!rss) return '--';
                       return rss >= 1024 ? `${(rss / 1024).toFixed(1)} GB` : `${rss.toFixed(0)} MB`;
                     })()}</span></span>
                   </div>

@@ -33,8 +33,8 @@ export default function Dashboard() {
   const agentsQ = useQuery({ queryKey: ['agents'], queryFn: api.agents, refetchInterval: 10_000 });
   const metricsQ = useQuery({ queryKey: ['metrics'], queryFn: api.metrics, refetchInterval: 15_000, enabled: tab === 'agents' || tab === 'overview' });
   const tokensQ = useQuery({ queryKey: ['tokenStats'], queryFn: api.tokenStats, refetchInterval: 30_000, enabled: tab === 'tokens' || tab === 'overview' });
-  // Real-time CPU / memory history for the dynamic line chart (poll every 5 s)
-  const metricsHistory = useMetricsHistory(60);
+  // Real-time CPU / memory history for the dynamic line chart (poll every 1 s)
+  const metricsHistory = useMetricsHistory(120);
 
   const status = statusQ.data;
   const agents: AgentInfo[] = agentsQ.data || [];

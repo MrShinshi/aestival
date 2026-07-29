@@ -200,6 +200,7 @@ export const api = {
 
   // Metrics & monitoring (admin only)
   metrics: () => request<MetricsResponse>('GET', '/metrics'),
+  metricsHistory: () => request<{ snapshots: Array<BotStatus & { _ts: number }> }>('GET', '/metrics/history'),
   agentMetrics: (id: string) => request<AgentWithMetrics>('GET', `/agents/${id}/metrics`),
   tokenStats: async (): Promise<TokenStat[]> => {
     const r = await request<TokenStat[] | { data: TokenStat[] }>('GET', '/tokens');

@@ -16,6 +16,32 @@ import { sanitizeAgentId } from './sanitize';
 
 const PROXY_TIMEOUT_MS = 15_000;
 
+// ── Metrics history ring buffer ──────────────────────────────────────────────
+//
+// Caches recent health snapshots so the frontend can back-fill the resource
+// chart on page load instead of starting with an empty graph.
+//
+// A background interval polls the bot every 1 s to keep the buffer warm even
+// when no browser is open.  Every /api/ui/status request also feeds the
+// buffer (opportunistic).
+
+const HISTORY_MAX = 120;  // 2 minutes at 1-second poll rate
+const historyBuffer: Array<{ ts: number; data: unknown }> = [];
+
+function feedHistory(data: unknown): void {
+  const now = Date.now();
+  historyBuffer.push({ ts: now, data });
+  // Trim to window — keep entries within last 2 minutes
+  const cutoff = now - 120_000;
+  while (historyBuffer.length > 0 && historyBuffer[0].ts < cutoff) {
+    historyBuffer.shift();
+  }
+  // Hard cap as safety valve
+  while (historyBuffer.length > HISTORY_MAX) {
+    historyBuffer.shift();
+  }
+}
+
 // ── Proxy helper ───────────────────────────────────────────────────────────
 
 async function proxyToBot(
@@ -172,9 +198,23 @@ export function setupProxy(app: Express) {
   app.get('/api/ui/status', async (_req, res) => {
     try {
       const r = await proxyToBot('GET', '/api/v1/health', null, '');
+      feedHistory(r.data);  // feed the metrics ring buffer
       res.status(r.status).json(r.data);
     } catch (err: any) {
       internalError(res, err, 'GET /status');
+    }
+  });
+
+  // ── Metrics history ────────────────────────────────────────────────────
+  // Returns cached health snapshots from the ring buffer so the frontend
+  // resource chart is immediately populated on page load.
+  // Each snapshot is annotated with _ts (server epoch ms) for time alignment.
+  app.get('/api/ui/metrics/history', async (_req, res) => {
+    try {
+      const snapshots = historyBuffer.map(e => ({ ...(e.data as any), _ts: e.ts }));
+      res.json({ snapshots });
+    } catch (err: any) {
+      internalError(res, err, 'GET /metrics/history');
     }
   });
 
@@ -218,4 +258,18 @@ export function setupProxy(app: Express) {
       internalError(res, err, 'GET /tokens');
     }
   });
+
+  // ── Background metrics collector ───────────────────────────────────────
+  // Polls the bot health endpoint every second to keep the ring buffer warm
+  // so that when a user opens the dashboard the past-2-min resource chart
+  // is immediately populated.
+  const bgPoll = setInterval(async () => {
+    try {
+      const r = await proxyToBot('GET', '/api/v1/health', null, '');
+      feedHistory(r.data);
+    } catch {
+      // silent — bot may be temporarily unreachable
+    }
+  }, 1000);
+  bgPoll.unref();
 }

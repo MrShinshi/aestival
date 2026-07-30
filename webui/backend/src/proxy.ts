@@ -262,6 +262,37 @@ export function setupProxy(app: Express) {
     }
   });
 
+  // Plugins
+  app.get('/api/ui/plugins', async (req, res) => {
+    const agentId = (req.query.agent as string) || 'default';
+    try {
+      const r = await proxyToBot(
+        'GET',
+        `/api/v1/plugins?agent=${encodeURIComponent(agentId)}`,
+        null,
+        userToken(req),
+      );
+      res.status(r.status).json(r.data);
+    } catch (err: any) {
+      internalError(res, err, 'GET /plugins');
+    }
+  });
+
+  app.put('/api/ui/plugins/:name', async (req, res) => {
+    const { name } = req.params;
+    try {
+      const r = await proxyToBot(
+        'PUT',
+        `/api/v1/plugins/${encodeURIComponent(name)}`,
+        req.body,
+        userToken(req),
+      );
+      res.status(r.status).json(r.data);
+    } catch (err: any) {
+      internalError(res, err, `PUT /plugins/${req.params.name}`);
+    }
+  });
+
   // ── Background metrics collector ───────────────────────────────────────
   // Polls the bot health endpoint every second to keep the ring buffer warm
   // so that when a user opens the dashboard the past-2-min resource chart

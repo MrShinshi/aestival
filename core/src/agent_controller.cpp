@@ -73,6 +73,7 @@ client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& p
 	  policy_(policy_engine::config{config.max_messages_per_minute, k_policy_max_turns_per_convo,
 									config.daily_token_budget}),
 	  chat_contexts_(make_backend(config.storage_dir)), storage_dir_(config.storage_dir),
+	  agent_id_(config.id),
 	  admin_ids_(config.admin_user_ids.begin(), config.admin_user_ids.end()), mode_(config.default_mode) {
 	try {
 		namespace fs = std::filesystem;
@@ -107,9 +108,11 @@ client::agent_controller::agent_controller(bot_messaging& bot, plugin_manager& p
 			}
 		}
 
-		// Register plugin tools
-		for (auto const& p : plugins_.plugins())
-			tools_.register_provider(p);
+		// Register plugin tools — only for plugins enabled for this agent.
+		for (auto const& p : plugins_.plugins()) {
+			if (plugins_.is_plugin_enabled(p->name(), agent_id_))
+				tools_.register_provider(p);
+		}
 
 		// Register MCP servers
 		for (auto const& mcp_cfg : config.mcp_servers) {
@@ -163,6 +166,7 @@ void client::agent_controller::notify_startup() {
 		<< "| `stop` | 关闭 Bot | 管理员 |\n"
 		<< "| `self-iterate` | 自迭代评估+改进 | 管理员 |\n"
 		<< "| `self-iterate dry-run` | 仅评估不改 | 管理员 |\n"
+		<< "| `plugin list` | 查看插件状态 | 所有人 |\n"
 		<< "| `help` | 查看帮助 | 所有人 |\n";
 
 	for (auto const& id : admin_ids_)
@@ -191,11 +195,13 @@ void client::agent_controller::handle_message(message_event const& message) {
 								 [this] { bot_.stop(); },
 								 on_self_iterate,
 								 [](message_event const& m) -> std::string { return actor_id_of(m); },
-								 [this](message_event const& m, std::string_view c) -> bool { return reply_to(m, c); }};
+								 [this](message_event const& m, std::string_view c) -> bool { return reply_to(m, c); },
+								 nullptr,         // registry
+								 &plugins_};      // plugins — for plugin system commands
 	if (system_command_handler::handle(n, message, cmd_deps))
 		return;
 
-	if (plugins_.dispatch_message(bot_, message))
+	if (plugins_.dispatch_message(bot_, message, agent_id_))
 		return;
 
 	runtime_mode mode;

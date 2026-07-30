@@ -19,6 +19,7 @@ namespace client {
 
 struct agent_registry;
 struct global_config;
+struct plugin_manager;
 
 // ─── management_api ────────────────────────────────────────────────────────
 //
@@ -39,6 +40,10 @@ struct global_config;
 //   GET  /api/v1/logs?level=...&limit=...
 //   GET  /api/v1/conversations?agent_id=...
 //   GET  /api/v1/conversations/:id
+//   GET  /api/v1/plugins?agent=<id>
+//   PUT  /api/v1/plugins/<name>         (toggle enable/disable)
+//   GET  /api/v1/plugins/<name>/config
+//   PUT  /api/v1/plugins/<name>/config
 //
 // All endpoints except /health require a Bearer token in the
 // Authorization header.
@@ -47,7 +52,7 @@ struct management_api {
 	// Create and start the server.
 	// `listen_addr` format: "127.0.0.1" (port from global_config)
 	// Call start() to launch the thread.
-	management_api(agent_registry& registry, global_config const& global);
+	management_api(agent_registry& registry, plugin_manager& plugins, global_config const& global);
 
 	~management_api();
 

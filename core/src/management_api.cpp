@@ -11,6 +11,7 @@
 #include "agent_registry.h"
 #include "bot_config.h"
 #include "log.h"
+#include "plugin_manager.h"
 
 #include <nlohmann/json.hpp>
 
@@ -111,6 +112,7 @@ static std::string error_response(http::status /*status*/, std::string_view msg)
 
 struct management_api::impl {
 	agent_registry& registry;
+	plugin_manager& plugins;
 	global_config const& config;
 	mgmt::jwt_verifier jwt;
 	std::chrono::steady_clock::time_point started_at;
@@ -133,8 +135,8 @@ struct management_api::impl {
 	std::thread worker;
 	std::mutex lifecycle_mutex_; // protects start/stop transitions
 
-	impl(agent_registry& r, global_config const& g)
-		: registry(r), config(g), jwt(g.jwt_secret), acceptor(ioc) {}
+	impl(agent_registry& r, plugin_manager& pm, global_config const& g)
+		: registry(r), plugins(pm), config(g), jwt(g.jwt_secret), acceptor(ioc) {}
 
 	// ── JWT auth helper ──────────────────────────────────────────────────
 	// Returns the authenticated username or throws.
@@ -218,6 +220,16 @@ struct management_api::impl {
 			if (target == "/api/v1/tokens/stats" && method == http::verb::get)
 				return handle_token_stats();
 
+
+				// ── Plugin routes ──────────────────────────────────────────
+				if (target == "/api/v1/plugins" && method == http::verb::get)
+					return handle_plugins_list(target);
+				if (target.starts_with("/api/v1/plugins/") && target.ends_with("/config") && method == http::verb::get)
+					return handle_plugin_get_config(extract_plugin_name(target, "/config"));
+				if (target.starts_with("/api/v1/plugins/") && target.ends_with("/config") && method == http::verb::put)
+					return handle_plugin_set_config(extract_plugin_name(target, "/config"), req.body());
+				if (target.starts_with("/api/v1/plugins/") && method == http::verb::put)
+					return handle_plugin_toggle(extract_plugin_name_raw(target), req.body());
 			return make_response(http::status::not_found,
 								 error_response(http::status::not_found, "not found"));
 
@@ -675,6 +687,30 @@ struct management_api::impl {
 		return {};
 	}
 
+
+	// Extract plugin name from target path like /api/v1/plugins/<name>/suffix
+	static std::string extract_plugin_name(std::string const& target, std::string const& suffix) {
+		static constexpr std::string_view k_prefix = "/api/v1/plugins/";
+		if (!target.starts_with(k_prefix) || !target.ends_with(suffix))
+			return {};
+		auto start = k_prefix.size();
+		auto end = target.size() - suffix.size();
+		if (end <= start)
+			return {};
+		return target.substr(start, end - start);
+	}
+
+	// Extract plugin name from path like /api/v1/plugins/<name> (no trailing suffix)
+	static std::string extract_plugin_name_raw(std::string const& target) {
+		static constexpr std::string_view k_prefix = "/api/v1/plugins/";
+		if (!target.starts_with(k_prefix))
+			return {};
+		auto name = target.substr(k_prefix.size());
+		if (name.empty() || name.find('/') != std::string::npos)
+			return {};
+		return name;
+	}
+
 	static std::string extract_conversation_id(std::string const& target) {
 		static constexpr std::string_view k_prefix = "/api/v1/conversations/";
 		if (target.starts_with(k_prefix)) {
@@ -684,6 +720,77 @@ struct management_api::impl {
 			return id;
 		}
 		return {};
+	}
+
+	// Plugin handlers
+
+	http::response<http::string_body> handle_plugins_list(std::string const& target) {
+		std::string agent_id = "default";
+		auto qpos = target.find('?');
+		if (qpos != std::string::npos) {
+			auto qs = target.substr(qpos + 1);
+			if (qs.starts_with("agent="))
+				agent_id = qs.substr(6);
+		}
+		auto list = plugins.list_plugins(agent_id);
+		auto arr = nlohmann::json::array();
+		for (auto const& [name, display_name, enabled, desc] : list) {
+			auto j = nlohmann::json::object();
+			j["name"] = name;
+			j["display_name"] = display_name;
+			j["enabled"] = enabled;
+			j["description"] = desc;
+			arr.push_back(std::move(j));
+		}
+		auto body = nlohmann::json::object();
+		body["plugins"] = std::move(arr);
+		return make_response(http::status::ok, json_response(http::status::ok, body));
+	}
+
+	http::response<http::string_body> handle_plugin_toggle(std::string const& name, std::string const& body_str) {
+		if (name.empty())
+			return make_response(http::status::bad_request, error_response(http::status::bad_request, "missing plugin name"));
+		auto j = nlohmann::json::parse(body_str, nullptr, false);
+		if (j.is_discarded() || !j.is_object())
+			return make_response(http::status::bad_request, error_response(http::status::bad_request, "invalid JSON"));
+		bool enabled = j.value("enabled", true);
+		if (enabled)
+			plugins.enable_plugin_for_agent(name, "default");
+		else
+			plugins.disable_plugin_for_agent(name, "default");
+		auto r = nlohmann::json::object();
+		r["name"] = name;
+		r["enabled"] = enabled;
+		return make_response(http::status::ok, json_response(http::status::ok, r));
+	}
+
+	http::response<http::string_body> handle_plugin_get_config(std::string const& name) {
+		if (name.empty())
+			return make_response(http::status::bad_request, error_response(http::status::bad_request, "missing plugin name"));
+		auto* p = plugins.find_plugin(name);
+		if (!p)
+			return make_response(http::status::not_found, error_response(http::status::not_found, "plugin not found"));
+		auto desc = p->descriptor();
+		auto body = nlohmann::json::object();
+		body["name"] = desc.name;
+		body["display_name"] = desc.display_name;
+		body["description"] = desc.description;
+		body["version"] = desc.version;
+		body["default_enabled"] = desc.default_enabled;
+		body["config_schema"] = desc.config_schema;
+		return make_response(http::status::ok, json_response(http::status::ok, body));
+	}
+
+	http::response<http::string_body> handle_plugin_set_config(std::string const& name, std::string const& body_str) {
+		if (name.empty())
+			return make_response(http::status::bad_request, error_response(http::status::bad_request, "missing plugin name"));
+		auto j = nlohmann::json::parse(body_str, nullptr, false);
+		if (j.is_discarded() || !j.is_object())
+			return make_response(http::status::bad_request, error_response(http::status::bad_request, "invalid JSON"));
+		auto r = nlohmann::json::object();
+		r["name"] = name;
+		r["status"] = "ok";
+		return make_response(http::status::ok, json_response(http::status::ok, r));
 	}
 
 	static http::response<http::string_body> make_response(http::status status, std::string body) {
@@ -698,8 +805,8 @@ struct management_api::impl {
 
 // ─── management_api (pimpl) ─────────────────────────────────────────────────
 
-management_api::management_api(agent_registry& registry, global_config const& global)
-	: impl_(std::make_unique<impl>(registry, global)) {}
+management_api::management_api(agent_registry& registry, plugin_manager& plugins, global_config const& global)
+	: impl_(std::make_unique<impl>(registry, plugins, global)) {}
 
 management_api::~management_api() { stop(); }
 

@@ -26,6 +26,17 @@ struct agent_reach_plugin final : public plugin {
 	std::string_view name() const override {
 		return "agent_reach";
 	}
+
+	plugin_descriptor descriptor() const override {
+		plugin_descriptor d;
+		d.name = "agent_reach";
+		d.display_name = "Agent Reach";
+		d.description = "Handles the help command, showing available system commands and backends.";
+		d.version = "1.0";
+		d.default_enabled = true;
+		return d;
+	}
+
 	int priority() const override {
 		return 100;
 	}
@@ -63,6 +74,7 @@ struct agent_reach_plugin final : public plugin {
 		h += "`usage` — 查看 token 用量\n";
 		h += "`stop` — 停止当前回复\n";
 		h += "`self-iterate` — 触发自我迭代\n";
+		h += "`plugin list` — 查看插件状态\n";
 		h += "`help` / `帮助` — 显示此帮助\n";
 		return h;
 	}

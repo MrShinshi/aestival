@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { to: '/agents', label: 'Agent', Icon: Bot, adminOnly: true },
   { to: '/conversations', label: '对话', Icon: MessageSquare, adminOnly: true },
   { to: '/logs', label: '日志', Icon: FileText, adminOnly: true },
+  { to: '/plugins', label: '插件', Icon: Puzzle, adminOnly: true },
   { to: '/settings', label: '设置', Icon: Settings },
 ];
 

@@ -17,6 +17,16 @@ struct simple_test_plugin final : public client::plugin {
 		return "simple_test";
 	}
 
+	plugin_descriptor descriptor() const override {
+		plugin_descriptor d;
+		d.name = "simple_test";
+		d.display_name = "Simple Test";
+		d.description = "Responds to hello/ping with a basic greeting.";
+		d.version = "1.0";
+		d.default_enabled = true;
+		return d;
+	}
+
 	int priority() const override {
 		return -100;
 	}

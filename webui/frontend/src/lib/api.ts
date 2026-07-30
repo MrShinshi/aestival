@@ -112,6 +112,15 @@ export interface MetricsResponse {
   };
 }
 
+export interface PluginInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  version?: string;
+  enabled: boolean;
+  config?: Record<string, unknown>;
+}
+
 export interface TokenStat {
   date: string;
   requests: number;
@@ -202,6 +211,18 @@ export const api = {
   metrics: () => request<MetricsResponse>('GET', '/metrics'),
   metricsHistory: () => request<{ snapshots: Array<BotStatus & { _ts: number }> }>('GET', '/metrics/history'),
   agentMetrics: (id: string) => request<AgentWithMetrics>('GET', `/agents/${id}/metrics`),
+  // Plugins
+  plugins: async (agentId?: string): Promise<PluginInfo[]> => {
+    const r = await request<{ plugins: PluginInfo[] }>('GET',
+      `/plugins?agent=${encodeURIComponent(agentId || 'default')}`);
+    return r.plugins || [];
+  },
+  togglePlugin: (name: string, enabled: boolean) =>
+    request<{ name: string; enabled: boolean }>('PUT',
+      `/plugins/${encodeURIComponent(name)}`, { enabled }),
+  pluginConfig: (name: string) =>
+    request<PluginInfo>('GET', `/plugins/${encodeURIComponent(name)}/config`),
+
   tokenStats: async (): Promise<TokenStat[]> => {
     const r = await request<TokenStat[] | { data: TokenStat[] }>('GET', '/tokens');
     if (Array.isArray(r)) return r;

@@ -14,6 +14,7 @@
 #include "console_api.h"
 #include "log.h"
 #include "management_api.h"
+#include "plugin_config_sqlite.h"
 #include "plugin_manager.h"
 #include "self_iteration.h"
 #include "simple_test_plugin.h"
@@ -136,8 +137,15 @@ int main(int argc, char* argv[]) {
 
 	client::log::init(cfg.global.log_file);
 
+	// ── plugin config backend ────────────────────────────────────────────
+	// Shared SQLite database: <config_dir>/plugin_config.db
+	std::string config_dir = resolve_path(base, "config");
+	std::string plugin_db_path = config_dir + "/plugin_config.db";
+	auto plugin_config = std::make_shared<client::plugin_config_sqlite>(plugin_db_path);
+
 	// ── shared dependencies ──────────────────────────────────────────────
 	client::plugin_manager plugins;
+	plugins.set_config_backend(plugin_config);
 	plugins.register_plugin(std::make_shared<client::plugins::simple_test_plugin>());
 
 	// ── console mode (legacy, bypasses registry) ─────────────────────────
@@ -190,7 +198,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// ── Management API ───────────────────────────────────────────────────
-	client::management_api mgmt_api(registry, cfg.global);
+	client::management_api mgmt_api(registry, plugins, cfg.global);
 	if (cfg.global.management_api_enabled && !cfg.global.jwt_secret.empty()) {
 		try {
 			mgmt_api.start();

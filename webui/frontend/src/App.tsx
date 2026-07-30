@@ -11,6 +11,7 @@ import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
+import Plugins from './pages/Plugins';
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
                     <Route path="/agents" element={<AdminRoute><Agents /></AdminRoute>} />
                     <Route path="/conversations" element={<AdminRoute><Conversations /></AdminRoute>} />
                     <Route path="/logs" element={<AdminRoute><Logs /></AdminRoute>} />
+                    <Route path="/plugins" element={<AdminRoute><Plugins /></AdminRoute>} />
 
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

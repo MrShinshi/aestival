@@ -7,6 +7,7 @@
 #include "system_command_handler.h"
 #include "agent_registry.h"
 #include "model_client.h"
+#include "plugin_manager.h"
 #include "encode_utils.h"
 #include "log.h"
 
@@ -93,7 +94,6 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 						   << "| 日期 | 模型 | 请求 | Prompt | Completion | 缓存命中 | 缓存未命中 |\n"
 						   << "|------|------|------|--------|------------|----------|------------|\n";
 
-						// day_model: date_str -> model -> tuple(req, prompt, compl, hit, miss)
 						std::map<std::string, std::map<std::string, std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>>>
 							day_model;
 
@@ -141,7 +141,6 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 						   << (tc / 1000) << "K compl, " << (th / 1000) << "K 缓存命中, "
 						   << (tm / 1000) << "K 缓存未命中\n";
 
-						// model list from total
 						if (total_arr.is_array() && !total_arr.empty()) {
 							md << "\n模型: ";
 							bool first = true;
@@ -223,8 +222,6 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 			d.reply_to(msg, "Permission denied.");
 			return true;
 		}
-		// Safety: refuse to delete if any agent is running — the database
-		// file is in active use by SQLite and removal would cause corruption.
 		if (d.registry) {
 			auto agents = d.registry->list_agents();
 			for (auto const& [id, status] : agents) {
@@ -332,6 +329,79 @@ bool system_command_handler::handle(std::string const& n, message_event const& m
 		} catch (std::exception const& ex) {
 			d.reply_to(msg, std::string("错误: ") + ex.what());
 		}
+		return true;
+	}
+
+	// ─── plugin management ──────────────────────────────────────────────
+
+	if (n == "plugin list") {
+		if (!d.plugins) {
+			d.reply_to(msg, "插件管理未启用。");
+			return true;
+		}
+		auto plugins_list = d.plugins->list_plugins("default");
+		if (plugins_list.empty()) {
+			d.reply_to(msg, "当前无已注册插件。");
+			return true;
+		}
+		std::ostringstream md;
+		md << "## 插件状态\n\n| 名称 | 显示名 | 状态 | 说明 |\n|------|--------|------|------|\n";
+		for (auto const& [name, display_name, enabled, desc] : plugins_list) {
+			md << "| `" << name << "` | " << display_name << " | "
+			   << (enabled ? "✅ 启用" : "⛔ 禁用") << " | " << desc << " |\n";
+		}
+		md << "\n管理员可用 `plugin enable <name>` / `plugin disable <name>` 切换。";
+		d.reply_to(msg, md.str());
+		return true;
+	}
+
+	if (client::starts_with(n, "plugin enable ")) {
+		if (!is_admin(msg, d.admin_ids)) { d.reply_to(msg, "Permission denied."); return true; }
+		if (!d.plugins) { d.reply_to(msg, "插件管理未启用。"); return true; }
+		std::string pname = client::trim(n.substr(14));
+		if (pname.empty()) { d.reply_to(msg, "用法: plugin enable <name>"); return true; }
+		if (!d.plugins->find_plugin(pname)) {
+			d.reply_to(msg, "插件 '" + pname + "' 不存在。用 `plugin list` 查看可用插件。");
+			return true;
+		}
+		d.plugins->enable_plugin_for_agent(pname, "default");
+		d.reply_to(msg, "插件 '" + pname + "' 已启用。");
+		return true;
+	}
+
+	if (client::starts_with(n, "plugin disable ")) {
+		if (!is_admin(msg, d.admin_ids)) { d.reply_to(msg, "Permission denied."); return true; }
+		if (!d.plugins) { d.reply_to(msg, "插件管理未启用。"); return true; }
+		std::string pname = client::trim(n.substr(15));
+		if (pname.empty()) { d.reply_to(msg, "用法: plugin disable <name>"); return true; }
+		if (!d.plugins->find_plugin(pname)) {
+			d.reply_to(msg, "插件 '" + pname + "' 不存在。用 `plugin list` 查看可用插件。");
+			return true;
+		}
+		d.plugins->disable_plugin_for_agent(pname, "default");
+		d.reply_to(msg, "插件 '" + pname + "' 已禁用。");
+		return true;
+	}
+
+	if (client::starts_with(n, "plugin info ")) {
+		if (!d.plugins) { d.reply_to(msg, "插件管理未启用。"); return true; }
+		std::string pname = client::trim(n.substr(12));
+		if (pname.empty()) { d.reply_to(msg, "用法: plugin info <name>"); return true; }
+		auto* p = d.plugins->find_plugin(pname);
+		if (!p) {
+			d.reply_to(msg, "插件 '" + pname + "' 不存在。用 `plugin list` 查看可用插件。");
+			return true;
+		}
+		auto desc = p->descriptor();
+		std::ostringstream md;
+		md << "## " << desc.display_name << "\n\n"
+		   << "| 属性 | 值 |\n|------|----|\n"
+		   << "| 名称 | `" << desc.name << "` |\n"
+		   << "| 版本 | " << desc.version << " |\n"
+		   << "| 优先级 | " << p->priority() << " |\n"
+		   << "| 默认启用 | " << (desc.default_enabled ? "是" : "否") << " |\n\n"
+		   << desc.description << "\n";
+		d.reply_to(msg, md.str());
 		return true;
 	}
 

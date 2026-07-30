@@ -19,6 +19,7 @@ namespace client {
 
 struct model_client;
 struct agent_registry;
+struct plugin_manager;
 
 // ─── system_command_deps ─────────────────────────────────────────────────
 // All external state that handle_system_command needs.
@@ -48,6 +49,9 @@ struct system_command_deps {
 
 	// For agent management commands (Phase 1 multi-agent). Must be last — positional init.
 	agent_registry* registry = nullptr;
+
+	// For plugin management commands.
+	plugin_manager* plugins = nullptr;
 };
 
 // ─── system_command_handler ────────────────────────────────────────────────

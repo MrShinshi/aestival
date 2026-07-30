@@ -25,14 +25,17 @@ const PROXY_TIMEOUT_MS = 15_000;
 // when no browser is open.  Every /api/ui/status request also feeds the
 // buffer (opportunistic).
 
-const HISTORY_MAX = 120;  // 2 minutes at 1-second poll rate
+const HISTORY_MAX = 180;  // 3 minutes at 1-second poll rate (safe margin above 2 min)
+const HISTORY_WINDOW_MS = 180_000;
 const historyBuffer: Array<{ ts: number; data: unknown }> = [];
 
 function feedHistory(data: unknown): void {
   const now = Date.now();
   historyBuffer.push({ ts: now, data });
-  // Trim to window — keep entries within last 2 minutes
-  const cutoff = now - 120_000;
+  // Trim to window — keep entries within last 3 minutes so the
+  // frontend always gets a full 2-minute chart on page load, even
+  // with slight timing jitter between background poller ticks.
+  const cutoff = now - HISTORY_WINDOW_MS;
   while (historyBuffer.length > 0 && historyBuffer[0].ts < cutoff) {
     historyBuffer.shift();
   }

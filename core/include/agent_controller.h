@@ -13,6 +13,7 @@
 #include "chat_context_manager.h"
 #include "policy_engine.h"
 #include "plugin.h"
+#include "plugin_config_backend.h"
 #include "plugin_manager.h"
 #include "token_counter.h"
 #include "tool_registry.h"
@@ -34,6 +35,7 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	// ── Introspection for management API ────────────────────────────
 	worker_pool const& workers() const { return workers_; }
 	agent_metrics const& get_metrics() const { return metrics_; }
+	std::string const& agent_id() const { return agent_id_; }
 	std::vector<std::tuple<std::string, int, int64_t, int64_t>> get_token_stats() {
 		return chat_contexts_.get_token_stats();
 	}
@@ -72,6 +74,7 @@ struct agent_controller : std::enable_shared_from_this<agent_controller> {
 	std::vector<chat_message> global_system_;
 	std::string group_rules_template_; // GROUP_RULES.md with {AT_HINT} placeholder
 	std::string storage_dir_;
+	std::string agent_id_;
 	std::unordered_set<std::string> admin_ids_;
 
 	mutable std::mutex state_mutex_;

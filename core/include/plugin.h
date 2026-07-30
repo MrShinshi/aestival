@@ -107,12 +107,26 @@ struct plugin_context {
 	message_receipt last_receipt_{};
 };
 
-// ─── plugin (now also a tool_provider) ─────────────────────────────
+// ─── plugin_descriptor ──────────────────────────────────────────────────
+// Self-describing metadata for plugin discovery and management.
+// Every plugin must provide this via descriptor().
+
+struct plugin_descriptor {
+	std::string name;              // unique id, e.g. "simple_test"
+	std::string display_name;      // human-readable, e.g. "Simple Test"
+	std::string description;       // what this plugin does
+	std::string version = "1.0";
+	bool default_enabled = true;   // whether it starts enabled for new agents
+	nlohmann::json config_schema;  // JSON Schema for configurable params (optional)
+};
+
+// ─── plugin (now also a tool_provider) ─────────────────────────────────
 // P2-2: Every plugin can optionally expose tools for the agent.
 
 struct plugin : tool_provider {
 	virtual ~plugin() = default;
 	virtual std::string_view name() const = 0;
+	virtual plugin_descriptor descriptor() const = 0;
 	virtual int priority() const {
 		return 0;
 	}
@@ -122,7 +136,7 @@ struct plugin : tool_provider {
 	virtual bool can_handle(const message_event& message) const = 0;
 	virtual plugin_result handle(plugin_context& context) = 0;
 
-	// ── tool_provider overrides ────────────────────────────────────
+	// ── tool_provider overrides ──────────────────────────────────────
 	std::vector<tool_definition> get_tools() const override {
 		return {};
 	}

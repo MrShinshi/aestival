@@ -10,6 +10,7 @@ import {
   User,
   Shield,
   Github,
+  Puzzle,
 } from 'lucide-react';
 import { APP_VERSION } from '../lib/api';
 import { useAuth } from '../lib/auth';

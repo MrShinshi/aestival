@@ -17,7 +17,6 @@ export default function Plugins() {
   const { data: plugins, isLoading } = useQuery({
     queryKey: ['plugins', agentId],
     queryFn: () => api.plugins(agentId),
-    refetchInterval: 15_000,
   });
 
   const toggleMutation = useMutation({

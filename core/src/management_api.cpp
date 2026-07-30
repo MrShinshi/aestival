@@ -221,15 +221,17 @@ struct management_api::impl {
 				return handle_token_stats();
 
 
-			// ── Plugin routes ──────────────────────────────────────────
-			if (target == "/api/v1/plugins" && method == http::verb::get)
-				return handle_plugins_list(target);
+			// ── Plugin routes ────────────────────────────────────────────────
+			// More specific routes first, catch-all GET last.
 			if (target.starts_with("/api/v1/plugins/") && target.ends_with("/config") && method == http::verb::get)
 				return handle_plugin_get_config(extract_plugin_name(target, "/config"));
 			if (target.starts_with("/api/v1/plugins/") && target.ends_with("/config") && method == http::verb::put)
 				return handle_plugin_set_config(extract_plugin_name(target, "/config"), req.body());
 			if (target.starts_with("/api/v1/plugins/") && method == http::verb::put)
 				return handle_plugin_toggle(extract_plugin_name_raw(target), req.body());
+			// GET /api/v1/plugins and /api/v1/plugins?agent=... (must be last)
+			if (target.starts_with("/api/v1/plugins") && method == http::verb::get)
+				return handle_plugins_list(target);
 			return make_response(http::status::not_found,
 								 error_response(http::status::not_found, "not found"));
 

@@ -230,7 +230,7 @@ struct management_api::impl {
 					return handle_plugin_set_config(extract_plugin_name(target, "/config"), req.body());
 				if (target.starts_with("/api/v1/plugins/") && method == http::verb::put)
 					return handle_plugin_toggle(extract_plugin_name_raw(target), req.body());
-			return make_response(http::status::not_found,
+				return make_response(http::status::not_found,
 								 error_response(http::status::not_found, "not found"));
 
 		} catch (std::exception const& ex) {

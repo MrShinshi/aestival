@@ -158,7 +158,7 @@ export default function Dashboard() {
             </div>
 
           {/* Thread / Worker info */}
-          <div className="grid grid-cols-4 gap-2 text-xs text-gray-500">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-gray-500">
             <div>系统线程: <span className="text-gray-300">{status?.system?.thread_count ?? '--'}</span></div>
             <div>Worker 槽: <span className="text-gray-300">{metrics?.workers?.total_slots ?? '--'}</span></div>
             <div>队列深度: <span className="text-gray-300">{metrics?.workers?.total_queue_depth ?? '--'}</span></div>

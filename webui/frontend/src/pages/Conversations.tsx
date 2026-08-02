@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
 import { api, type ConversationSummary } from '../lib/api';
 
 export default function Conversations() {
@@ -49,9 +50,9 @@ export default function Conversations() {
     <div>
       <h2 className="text-xl font-bold mb-6">对话审查</h2>
 
-      <div className="flex gap-4">
-        {/* List */}
-        <div className="w-96 flex-shrink-0 space-y-4 max-h-[calc(100vh-200px)] overflow-auto">
+      <div className="md:flex md:gap-4">
+        {/* List — full width on mobile, fixed-width column on md+ */}
+        <div className={`space-y-4 md:w-96 md:flex-shrink-0 md:max-h-[calc(100dvh-200px)] md:overflow-auto ${selected ? 'hidden md:block' : ''}`}>
           {groups.map(g => (
             <div key={g.agent}>
               <div className="text-xs font-semibold text-indigo-400 mb-1 uppercase tracking-wider">
@@ -90,10 +91,20 @@ export default function Conversations() {
           )}
         </div>
 
-        {/* Detail */}
-        <div className="flex-1 bg-gray-900 rounded-lg border border-gray-800 p-4 max-h-[calc(100vh-200px)] overflow-auto">
+        {/* Detail — hidden on mobile until a conversation is selected */}
+        <div className={`bg-gray-900 rounded-lg border border-gray-800 p-4 md:flex-1 md:max-h-[calc(100dvh-200px)] md:overflow-auto ${selected ? '' : 'hidden md:block'}`}>
           {selected ? (
-            <ConversationDetail convoId={selected.convoId} agentId={selected.agentId} />
+            <>
+              {/* Mobile back button */}
+              <button
+                onClick={() => setSelected(null)}
+                className="md:hidden flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200 mb-3"
+              >
+                <ArrowLeft size={16} aria-hidden="true" />
+                返回列表
+              </button>
+              <ConversationDetail convoId={selected.convoId} agentId={selected.agentId} />
+            </>
           ) : (
             <div className="text-gray-500 text-sm py-8 text-center">选择左侧对话查看详情</div>
           )}

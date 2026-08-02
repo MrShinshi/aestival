@@ -21,7 +21,7 @@ export default function Logs() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <h2 className="text-xl font-bold">日志</h2>
         <div className="flex items-center gap-2">
           <select className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
@@ -42,7 +42,7 @@ export default function Logs() {
       {isLoading ? (
         <div className="text-gray-400">Loading...</div>
       ) : (
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 font-mono text-xs leading-6 max-h-[calc(100vh-200px)] overflow-auto">
+        <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 font-mono text-xs leading-6 max-h-[calc(100dvh-220px)] overflow-auto">
           {data?.lines.map((line, i) => {
             const lvl = ['ERROR', 'WARN', 'INFO', 'DEBUG'].find(l => line.includes(`[${l}]`));
             const info = lvl ? levelBadges[lvl] : { color: 'text-gray-400', badge: '' };

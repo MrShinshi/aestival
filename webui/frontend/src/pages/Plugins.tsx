@@ -33,7 +33,7 @@ export default function Plugins() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <h2 className="text-xl font-bold">插件管理</h2>
         <div className="flex items-center gap-3">
           {/* Agent selector */}
@@ -79,14 +79,14 @@ export default function Plugins() {
           {plugins.map((p: PluginInfo) => (
             <div
               key={p.name}
-              className="bg-gray-900 rounded-lg border border-gray-800 p-4 flex items-center justify-between"
+              className="bg-gray-900 rounded-lg border border-gray-800 p-4 flex items-center justify-between gap-3"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-indigo-900/40 rounded flex items-center justify-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 bg-indigo-900/40 rounded flex items-center justify-center shrink-0">
                   <Puzzle size={16} className="text-indigo-400" aria-hidden={true} />
                 </div>
-                <div>
-                  <div className="font-medium text-gray-200">{p.display_name}</div>
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-200 truncate">{p.display_name}</div>
                   <div className="text-xs text-gray-500">
                     <code className="text-gray-600">{p.name}</code>
                     {p.version && <span className="ml-2">v{p.version}</span>}
@@ -102,7 +102,7 @@ export default function Plugins() {
                   toggleMutation.mutate({ name: p.name, enabled: !p.enabled })
                 }
                 disabled={toggleMutation.isPending}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors shrink-0 ${
                   p.enabled
                     ? 'bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50'
                     : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'

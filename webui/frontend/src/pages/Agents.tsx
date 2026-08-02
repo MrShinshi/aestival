@@ -179,7 +179,7 @@ function CreateAgentModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[28rem] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-[28rem] mx-4 max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-semibold mb-1">创建 Agent</h3>
         <p className="text-xs text-gray-500 mb-4">创建一个新的机器人实例，需要提供 QQ Bot 凭据和 LLM API Key。</p>
 

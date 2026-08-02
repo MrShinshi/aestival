@@ -103,12 +103,20 @@ app.get('/api/ui/health', async (_req, res) => {
 // ── Protected routes (JWT session cookie required) ─────────────────────────
 //
 // Administration endpoints — login required AND admin username.
-// Regular users are 403'd from agents, conversations, and logs.
-app.use('/api/ui/agents', requireAuth, requireAdmin);
+// Regular users are 403'd from conversations, logs, metrics, tokens, plugins,
+// and agent *mutations*.
 app.use('/api/ui/conversations', requireAuth, requireAdmin);
 app.use('/api/ui/logs', requireAuth, requireAdmin);
 app.use('/api/ui/metrics', requireAuth, requireAdmin);
 app.use('/api/ui/tokens', requireAuth, requireAdmin);
+app.use('/api/ui/plugins', requireAuth, requireAdmin);
+
+// Agent routes — the read-only list is open to any authenticated user (the
+// status page shows what's online); anything that mutates or targets a single
+// agent stays admin-only.
+app.use('/api/ui/agents', requireAuth);
+app.post('/api/ui/agents', requireAuth, requireAdmin);
+app.use('/api/ui/agents/:id', requireAuth, requireAdmin);
 
 // Status is read-only health info — any authenticated user can see it.
 app.use('/api/ui/status', requireAuth);

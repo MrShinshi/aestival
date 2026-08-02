@@ -81,6 +81,12 @@ export interface BotStatus {
   system?: SystemMetrics;
 }
 
+export interface HealthResult {
+  status: string;
+  checks: Record<string, string>;
+  timestamp: string;
+}
+
 export interface AgentMetricsDetail {
   message_count: number;
   tool_call_count: number;
@@ -171,6 +177,7 @@ export interface AgentActionResult {
 export const api = {
   // Status
   status: () => request<BotStatus>('GET', '/status'),
+  health: () => request<HealthResult>('GET', '/health'),
 
   // Agents
   agents: async (): Promise<AgentInfo[]> => {

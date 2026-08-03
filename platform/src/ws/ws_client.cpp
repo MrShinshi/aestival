@@ -46,6 +46,13 @@ boost::asio::awaitable<std::string> ws::read_async() {
 	co_return beast::buffers_to_string(read_buffer_.data());
 }
 
+boost::asio::awaitable<std::string> ws::read_async(std::chrono::milliseconds /*timeout*/) {
+	// TODO: Implement true deadline race with steady_timer + cancellation_slot.
+	// For now fall through to the no-timeout overload; callers should rely on
+	// TCP keepalive and periodic heartbeat failure detection instead.
+	co_return co_await read_async();
+}
+
 boost::asio::awaitable<void> ws::write_async(std::string const& payload) {
 	if (!ws_) {
 		co_return;
@@ -59,15 +66,21 @@ void ws::close() {
 		return;
 	}
 
-	beast::error_code ec;
+	beast::error_code ec_shutdown;
 	if (ws_->is_open()) {
-		ws_->close(boost::beast::websocket::close_code::normal, ec);
+		ws_->close(boost::beast::websocket::close_code::normal, ec_shutdown);
 	}
 
-	ws_->next_layer().shutdown(ec); // suppress eof/truncated
-	ws_->next_layer().next_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-	ec.clear();
-	ws_->next_layer().next_layer().close(ec);
+	beast::error_code ec_tls;
+	ws_->next_layer().shutdown(ec_tls);
+	if (ec_tls && ec_tls != boost::asio::error::eof &&
+	    ec_tls != ssl::error::stream_truncated) {
+		// Non-trivial TLS shutdown error — may indicate connection problem.
+	}
+
+	beast::error_code ec_tcp;
+	ws_->next_layer().next_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec_tcp);
+	ws_->next_layer().next_layer().close(ec_tcp);
 	reset();
 }
 

@@ -40,14 +40,14 @@ chat_context_manager::chat_context_manager(std::shared_ptr<chat_storage_backend>
 void chat_context_manager::append_user(std::string const& convo_id, std::string const& sender_nick,
 									   std::string const& content) {
 	std::lock_guard<std::mutex> lk(mutex_);
-	backend_->append_message(convo_id, {"user", sender_nick, content});
+	backend_->append_message(convo_id, {.role = "user", .sender_nick = sender_nick, .content = content});
 }
 
 // ─── append_assistant ─────────────────────────────────────────────────────
 
 void chat_context_manager::append_assistant(std::string const& convo_id, std::string const& content) {
 	std::lock_guard<std::mutex> lk(mutex_);
-	backend_->append_message(convo_id, {"assistant", "", content});
+	backend_->append_message(convo_id, {.role = "assistant", .content = content});
 }
 
 // ─── append_tool ─────────────────────────────────────────────────────────
@@ -165,8 +165,20 @@ void chat_context_manager::summarize_with_model(std::string const& convo_id, mod
 	} catch (...) {
 		std::lock_guard<std::mutex> lk(mutex_);
 		auto fallback_msgs = backend_->load(convo_id);
-		summarize_if_needed(fallback_msgs);
-		backend_->save(convo_id, fallback_msgs);
+		// Guard against concurrent appends: if messages were added during the LLM
+		// call, preserve them by only summarizing the original range.
+		if (fallback_msgs.size() > msg_count_before) {
+			std::vector<chat_message> original(fallback_msgs.begin(),
+											   fallback_msgs.begin() + msg_count_before);
+			auto tail = std::vector<chat_message>(fallback_msgs.begin() + msg_count_before,
+												  fallback_msgs.end());
+			summarize_if_needed(original);
+			original.insert(original.end(), tail.begin(), tail.end());
+			backend_->save(convo_id, original);
+		} else {
+			summarize_if_needed(fallback_msgs);
+			backend_->save(convo_id, fallback_msgs);
+		}
 	}
 }
 

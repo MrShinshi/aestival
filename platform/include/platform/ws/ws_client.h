@@ -4,6 +4,7 @@
  * Licensed under MIT
  */
 #include <string>
+#include <chrono>
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -21,6 +22,8 @@ struct ws {
 
 	boost::asio::awaitable<void> connect_async(std::string const& host, std::string const& path, int port);
 	boost::asio::awaitable<std::string> read_async();
+	boost::asio::awaitable<std::string> read_async(std::chrono::milliseconds timeout);
+
 	boost::asio::awaitable<void> write_async(std::string const& payload);
 
 	void close();

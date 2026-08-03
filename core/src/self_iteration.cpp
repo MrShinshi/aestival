@@ -23,7 +23,7 @@ namespace {
 
 static constexpr int kDefaultSampleCount = 10;
 static constexpr double kImproveThreshold = 4.0; // avg score below this → improve
-static constexpr int kMinIntervalMinutes = 60;	 // min time between auto iterations
+[[maybe_unused]] static constexpr int kMinIntervalMinutes = 60;	 // min time between auto iterations
 static constexpr int kClaudeTimeoutSeconds = 120;
 static constexpr int k_default_query_limit = 50;
 static constexpr int k_min_samples = 3;
@@ -50,6 +50,7 @@ static std::string strip_json_fences(std::string_view s) {
 		try {
 			return boost::regex(R"(^```(?:json)?\s*\n?)");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("");
 		}
 	}();
@@ -62,6 +63,7 @@ static std::string strip_json_fences(std::string_view s) {
 		try {
 			return boost::regex(R"(\n?```\s*$)");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("");
 		}
 	}();
@@ -571,7 +573,7 @@ std::string self_iteration_engine::commit_changes(std::string const& summary) {
 	if (!workspace_pattern.empty() && workspace_pattern.back() != '/')
 		workspace_pattern += '/';
 
-	std::string add_cmd = "git add " + workspace_pattern + "*.md";
+	std::string add_cmd = "git add " + shell_quote(workspace_pattern + "*.md");
 	std::string result = agent_reach_client::exec(add_cmd);
 
 	if (result.find("fatal:") != std::string::npos) {
@@ -640,6 +642,33 @@ std::string self_iteration_engine::shell_quote(std::string_view s) {
 	}
 	r += '"';
 	return r;
+}
+
+// ─── shared factory ──────────────────────────────────────────────────────
+
+std::function<std::string(bool)> make_si_callback(std::shared_ptr<self_iteration_engine> si) {
+	if (!si)
+		return {};
+	return [si](bool dry) -> std::string {
+		auto r = dry ? si->dry_run() : si->run();
+		if (!r.error.empty())
+			return "## 自迭代失败\n\n" + r.error;
+
+		std::ostringstream md;
+		md << "## " << (r.dry_run ? "自迭代评估 (dry-run)" : "自迭代完成") << "\n\n";
+		md << "| 指标 | 分数 |\n|------|------|\n";
+		md << "| 语气 | " << r.avg_tone_score << " |\n";
+		md << "| 准确性 | " << r.avg_accuracy_score << " |\n";
+		md << "| 完整性 | " << r.avg_completeness_score << " |\n";
+		md << "| 效率 | " << r.avg_efficiency_score << " |\n";
+		md << "\n**样本**: " << r.samples_evaluated << " | **问题**: " << r.issues_found
+		   << " | **改进**: " << r.improvements_applied;
+		if (!r.git_commit_hash.empty())
+			md << "\n\ncommit: `" << r.git_commit_hash << "`";
+		if (!r.summary.empty())
+			md << "\n\n" << r.summary;
+		return md.str();
+	};
 }
 
 } // namespace client

@@ -200,6 +200,7 @@ std::string policy_engine::filter_output(std::string_view content) {
 		try {
 			return boost::regex(R"(\[(SEARCH|FETCH):[^\]]*\])");
 		} catch (...) {
+			client::log::warn("regex compile failed");
 			return boost::regex("");
 		}
 	}();

@@ -50,6 +50,12 @@ struct worker_pool {
 	// Signal shutdown and join all worker threads.
 	void stop();
 
+	// ── Introspection (thread-safe) ─────────────────────────────────
+	// Number of active conversation slots (= worker threads).
+	size_t active_slot_count() const;
+	// Total pending messages across all slot queues.
+	size_t total_queue_depth() const;
+
 	private:
 	struct slot {
 		std::mutex mtx;
@@ -65,7 +71,7 @@ struct worker_pool {
 	key_fn key_;
 
 	std::atomic<bool> stopping_{false};
-	std::mutex map_mutex_;
+	mutable std::mutex map_mutex_;
 	std::unordered_map<std::string, std::unique_ptr<slot>> slots_;
 };
 

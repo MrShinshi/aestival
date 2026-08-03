@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20...4.3.1)
+cmake_minimum_required(VERSION 3.20)
 
 # Prefer modern Find/Config behavior for boost (suppresses CMP0167 warning)
 if(POLICY CMP0167)
@@ -33,27 +33,28 @@ if(NOT VCPKG_BOOTSTRAPPED AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
         message(STATUS "vcpkg checkout not found — acquiring into")
         message(STATUS "  ${VCPKG_ROOT}")
 
-        # 1) try git clone (fast, small download)
+        # 1) try git clone (fast, small download) — pinned to a known-good commit
         find_package(Git QUIET)
         if(GIT_FOUND)
             execute_process(
                 COMMAND "${GIT_EXECUTABLE}" clone --depth 1
+                        --branch 2025.01.19
                         "https://github.com/microsoft/vcpkg.git"
                         "${VCPKG_ROOT}"
                 RESULT_VARIABLE git_result
             )
         endif()
 
-        # 2) fallback to zip download
+        # 2) fallback to zip download (pinned release)
         if(NOT GIT_FOUND OR NOT git_result EQUAL 0)
-            set(zip "${CMAKE_BINARY_DIR}/vcpkg-master.zip")
+            set(zip "${CMAKE_BINARY_DIR}/vcpkg-2025.01.19.zip")
             set(extract_root "${CMAKE_BINARY_DIR}/vcpkg-bootstrap")
-            set(extracted_vcpkg "${extract_root}/vcpkg-master")
+            set(extracted_vcpkg "${extract_root}/vcpkg-2025.01.19")
             file(REMOVE_RECURSE "${extract_root}")
             file(MAKE_DIRECTORY "${extract_root}")
             message(STATUS "git unavailable — downloading vcpkg zip …")
             file(DOWNLOAD
-                "https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip"
+                "https://github.com/microsoft/vcpkg/archive/refs/tags/2025.01.19.zip"
                 "${zip}"
                 SHOW_PROGRESS STATUS dl_status
             )
@@ -161,7 +162,7 @@ set(PCH_HEADER ${CMAKE_SOURCE_DIR}/app/stdafx.h)
 
 # ─── sources per layer ────────────────────────────────────────────────────
 
-set(APP_SOURCES    app/main.cpp app/llm_adapter.cpp app/im_adapter.cpp)
+set(APP_SOURCES    app/main.cpp app/llm_adapter.cpp)
 set(APP_HEADERS   app/stdafx.h)
 
 set(CORE_AGENT     core/src/agent_controller.cpp)
@@ -170,6 +171,8 @@ set(CORE_CONFIG    core/config/bot_config.cpp)
 set(CORE_CONFIG_H  core/config/bot_config.h)
 set(CORE_SEARCH    core/src/agent_reach_client.cpp)
 set(CORE_SEARCH_H  core/include/agent_reach_client.h core/include/agent_reach_plugin.h)
+set(CORE_MCP       core/src/mcp_client.cpp)
+set(CORE_MCP_H     core/include/mcp_client.h)
 set(CORE_CONTEXT   core/src/chat_context_manager.cpp)
 set(CORE_CONTEXT_H core/include/chat_context_manager.h core/include/chat_storage_sqlite.h)
 set(CORE_POLICY    core/src/policy_engine.cpp)
@@ -178,9 +181,16 @@ set(CORE_SELF_ITER core/src/self_iteration.cpp)
 set(CORE_SELF_ITER_H core/include/self_iteration.h core/include/self_iteration_prompts.h)
 set(CORE_COMMAND   core/src/system_command_handler.cpp core/src/worker_pool.cpp)
 set(CORE_COMMAND_H core/include/system_command_handler.h core/include/worker_pool.h)
+set(CORE_REGISTRY   core/src/agent_registry.cpp)
+set(CORE_REGISTRY_H core/include/agent_registry.h core/include/agent_instance.h
+                    core/include/platform_session.h)
+set(CORE_MGMT      core/src/management_api.cpp)
+set(CORE_MGMT_H   core/include/management_api.h core/include/management_auth.h)
 set(CORE_UTIL      core/src/log.cpp)
 set(CORE_UTIL_H    core/include/log.h core/include/encode_utils.h
                    core/include/console_api.h core/include/token_counter.h)
+set(CORE_SYS_MON   core/src/system_monitor.cpp)
+set(CORE_SYS_MON_H core/include/system_monitor.h)
 set(CORE_INCLUDE_H core/include/bot_messaging.h core/include/message_types.h
                    core/include/model_client.h core/include/plugin.h
                    core/include/plugin_manager.h core/include/runtime_mode.h
@@ -211,11 +221,15 @@ set(ALL_SOURCES
     ${CORE_AGENT}     ${CORE_AGENT_H}
     ${CORE_CONFIG}    ${CORE_CONFIG_H}
     ${CORE_SEARCH}    ${CORE_SEARCH_H}
+    ${CORE_MCP}       ${CORE_MCP_H}
     ${CORE_CONTEXT}   ${CORE_CONTEXT_H}
     ${CORE_POLICY}    ${CORE_POLICY_H}
     ${CORE_SELF_ITER} ${CORE_SELF_ITER_H}
     ${CORE_COMMAND}   ${CORE_COMMAND_H}
+    ${CORE_REGISTRY}   ${CORE_REGISTRY_H}
+    ${CORE_MGMT}      ${CORE_MGMT_H}
     ${CORE_UTIL}      ${CORE_UTIL_H}
+    ${CORE_SYS_MON}   ${CORE_SYS_MON_H}
     ${CORE_INCLUDE_H}
     ${PLAT_LLM}       ${PLAT_LLM_H}
     ${PLAT_HTTP}      ${PLAT_HTTP_H}
@@ -266,18 +280,40 @@ else()
     target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
 endif()
 
+# Treat warnings as errors in CI (opt-in so local dev isn't blocked).
+option(AESTIVAL_WERROR "Treat compiler warnings as errors" OFF)
+if(AESTIVAL_WERROR)
+    if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /WX)
+    else()
+        # -Wno-missing-field-initializers: C++20 aggregate init with omitted
+        # tail fields is well-defined (value-initialized).  Not a bug.
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -Werror -Wno-error=missing-field-initializers)
+        # GCC-specific: Boost websocket optional cleanup triggers a false
+        # positive maybe-uninitialized inside Boost internals.
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${PROJECT_NAME} PRIVATE -Wno-error=maybe-uninitialized)
+        endif()
+    endif()
+endif()
+
 # ─── IDE source_group (filters in VS / CLion) ──────────────────────────────
 
 source_group("app"                                       FILES ${APP_SOURCES}    ${APP_HEADERS})
 source_group("core\\agent"                               FILES ${CORE_AGENT}     ${CORE_AGENT_H})
 source_group("core\\config"                              FILES ${CORE_CONFIG}    ${CORE_CONFIG_H})
 source_group("core\\search"                              FILES ${CORE_SEARCH}    ${CORE_SEARCH_H})
+source_group("core\\mcp"                                 FILES ${CORE_MCP}       ${CORE_MCP_H})
 source_group("core\\context"                             FILES ${CORE_CONTEXT}   ${CORE_CONTEXT_H})
 source_group("core\\policy"                              FILES ${CORE_POLICY}    ${CORE_POLICY_H})
 source_group("core\\self_iteration"                      FILES ${CORE_SELF_ITER} ${CORE_SELF_ITER_H})
 source_group("core\\command"                             FILES ${CORE_COMMAND}   ${CORE_COMMAND_H})
+source_group("core\\registry"                           FILES ${CORE_REGISTRY}   ${CORE_REGISTRY_H})
+source_group("core\\management"                          FILES ${CORE_MGMT}      ${CORE_MGMT_H})
 source_group("core\\include"                             FILES ${CORE_INCLUDE_H})
 source_group("core\\util"                                FILES ${CORE_UTIL}      ${CORE_UTIL_H})
+source_group("core\\system_monitor"                     FILES ${CORE_SYS_MON}   ${CORE_SYS_MON_H})
 source_group("platform\\llm"                             FILES ${PLAT_LLM}       ${PLAT_LLM_H})
 source_group("platform\\http"                            FILES ${PLAT_HTTP}      ${PLAT_HTTP_H})
 source_group("platform\\websocket"                       FILES ${PLAT_WS}        ${PLAT_WS_H})

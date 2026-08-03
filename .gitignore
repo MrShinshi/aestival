@@ -21,3 +21,30 @@ CMakeUserPresets.json
 contexts/*.db
 /docs
 /out
+
+# node / npm
+node_modules/
+
+# webui build outputs
+webui/frontend/dist/
+webui/backend/dist/
+
+# environment / secrets
+.env
+.env.*
+.deploy_config
+config/bot_config.json
+
+# logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

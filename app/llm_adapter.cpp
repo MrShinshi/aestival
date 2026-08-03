@@ -4,12 +4,11 @@
  * Licensed under MIT
  */
 #include "stdafx.h"
+#include "log.h"
 #include "model_client.h"
 #include "platform/deepseek.h"
 #include "platform/openai.h"
 #include "bot_config.h"
-
-#include <nlohmann/json.hpp>
 
 static nlohmann::json build_messages_json(std::vector<client::chat_message> const& msgs) {
 	auto arr = nlohmann::json::array();
@@ -21,7 +20,10 @@ static nlohmann::json build_messages_json(std::vector<client::chat_message> cons
 			try {
 				j["tool_calls"] = nlohmann::json::parse(m.tool_calls_json);
 				j["content"] = nullptr;
-			} catch (...) {
+			} catch (nlohmann::json::exception const&) {
+				client::log::warn("[llm_adapter] failed to parse tool_calls_json — keeping content as-is");
+				// Don't clear content — a message with content but no tool_calls
+				// is still valid, unlike an empty message with neither.
 			}
 		}
 		arr.push_back(std::move(j));
@@ -98,7 +100,7 @@ struct deepseek_adapter : client::model_client {
 			j["cost"] = std::move(cost);
 			return j.dump();
 		} catch (std::exception const& ex) {
-			return std::string("{\"error\":\"") + ex.what() + "\"}";
+			return nlohmann::json{{"error", ex.what()}}.dump();
 		}
 	}
 };
@@ -158,11 +160,10 @@ struct openai_adapter : client::model_client {
 	}
 };
 
-std::unique_ptr<client::model_client> make_model_client(client::bot_config const& cfg) {
-	// Respect configured llm_provider; fall back to deepseek when unset.
+std::unique_ptr<client::model_client> make_model_client(client::agent_config const& cfg, bool verify_tls) {
 	if (cfg.llm_provider == "openai")
 		return std::make_unique<openai_adapter>(cfg.openai_api_key, cfg.openai_model, cfg.openai_base_url,
-												cfg.verify_tls);
+												verify_tls);
 	return std::make_unique<deepseek_adapter>(cfg.deepseek_api_key, cfg.deepseek_model, cfg.deepseek_user_token,
-											  cfg.deepseek_waf_cookie, cfg.verify_tls);
+											  cfg.deepseek_waf_cookie, verify_tls);
 }

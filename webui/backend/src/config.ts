@@ -1,0 +1,102 @@
+/**
+ * Centralised environment configuration.
+ *
+ * Import this module BEFORE any other local module — it calls dotenv.config()
+ * so that process.env is populated before other modules read it at load time.
+ *
+ * All other modules should import { config } from './config' instead of
+ * reading process.env directly.
+ */
+
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Resolve .env relative to the backend directory (one level above src/).
+// In dev (tsx) __dirname is src/; in prod (node dist/) it's dist/.
+// Walk up until we find .env or stop at the project root.
+function findEnv(): string | undefined {
+  const candidates = [
+    path.resolve(__dirname, '..', '.env'),
+    path.resolve(__dirname, '..', '..', '.env'),
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'webui', 'backend', '.env'),
+    path.resolve(process.cwd(), 'backend', '.env'),
+  ];
+  for (const c of candidates) {
+    try {
+      const fs = require('fs');
+      if (fs.existsSync(c)) return c;
+    } catch {}
+  }
+  return undefined;
+}
+
+const envPath = findEnv();
+if (envPath) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config(); // fallback to default behaviour
+}
+
+// Refuse to start without a configured secret
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+  process.exit(1);
+}
+
+function parseAdminUsers(): Set<string> {
+  const raw = (process.env.ADMIN_USERS || process.env.AUTH_ADMIN_USER || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  return new Set(raw);
+}
+
+export const config = {
+  jwtSecret: process.env.JWT_SECRET || '',
+  port: parseInt(process.env.PORT || '3000', 10),
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  nodeEnv: process.env.NODE_ENV || 'development',
+
+  // Bot API (for proxying management requests)
+  botApiUrl: process.env.BOT_API_URL || 'http://127.0.0.1:9090',
+  botLogPath: process.env.BOT_LOG_PATH || '',
+  botLogBase: process.env.BOT_LOG_BASE || '',
+  botContextsBase: process.env.BOT_CONTEXTS_BASE || '',
+
+  // Auth SQLite database
+  authDbPath: process.env.AUTH_DB_PATH || path.resolve(__dirname, '..', 'data', 'auth.db'),
+
+  // GitHub OAuth
+  // GITHUB_CALLBACK_URL is the legacy name (used by the previous passport-based
+  // OAuth).  GITHUB_REDIRECT_URI is the preferred name for new deployments.
+  githubClientId: process.env.GITHUB_CLIENT_ID || '',
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+  githubRedirectUri:
+    process.env.GITHUB_REDIRECT_URI ||
+    process.env.GITHUB_CALLBACK_URL ||
+    '',
+
+  // QQ OAuth (QQ互联)
+  qqAppId: process.env.QQ_APP_ID || '',
+  qqAppSecret: process.env.QQ_APP_SECRET || '',
+  qqRedirectUri: process.env.QQ_REDIRECT_URI || '',
+
+  // Cookie security — only enable Secure when behind HTTPS reverse proxy.
+  cookieSecure: process.env.COOKIE_SECURE === 'true',
+
+  // Admin credential preset — automatically binds a password to an existing
+  // OAuth user on startup.  Set both to enable.
+  adminUser: process.env.AUTH_ADMIN_USER || '',
+  adminPass: process.env.AUTH_ADMIN_PASS || '',
+
+  // Comma-separated list of usernames allowed to manage agents / view
+  // conversations and logs.  Defaults to the AUTH_ADMIN_USER so that
+  // existing deployments don't need an extra env var.
+  adminUsers: parseAdminUsers(),
+
+  // When true, registration is open to anyone.  Set to false once your
+  // admin accounts exist — new users can only be added via OAuth.
+  registrationOpen: process.env.REGISTRATION_OPEN !== 'false',
+};

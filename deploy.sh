@@ -14,22 +14,58 @@
 #   ./deploy.sh --sync             # after PR merge: reset current branch to main
 #   ./deploy.sh --help             # show this help
 #
+# Deployment target is loaded from $REPO_ROOT/.deploy_config (user-maintained,
+# never committed).  Alternatively set AESTIVAL_TARGET + AESTIVAL_HOST_KEY
+# as environment variables.
+#
 # Environment variables (optional):
-#   AESTIVAL_TARGET   default: shinshi@122.51.129.97
-#   AESTIVAL_REMOTE_DIR default: /home/shinshi/aestival
+#   AESTIVAL_REMOTE_DIR  default: derived from TARGET user (e.g. /home/<user>/aestival)
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
-TARGET="${AESTIVAL_TARGET:-shinshi@122.51.129.97}"
-REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/shinshi/aestival}"
+
+# ── Load deploy target & host key ───────────────────────────────────────────
+# Priority: 1) environment variable  2) .deploy_config file (user-maintained,
+# never committed).  If neither is set, abort with a clear message.
+DEPLOY_CONFIG="$REPO_ROOT/.deploy_config"
+if [ -f "$DEPLOY_CONFIG" ]; then
+  source "$DEPLOY_CONFIG"
+fi
+
+if [ -z "${AESTIVAL_TARGET:-}" ]; then
+  echo "ERROR: AESTIVAL_TARGET not set." >&2
+  echo "" >&2
+  echo "  Create '$DEPLOY_CONFIG' with these contents:" >&2
+  echo "" >&2
+  echo '    AESTIVAL_TARGET=user@<your-server-ip>' >&2
+  echo '    AESTIVAL_HOST_KEY="ssh-ed25519 AAAA..."' >&2
+  echo "" >&2
+  echo "  Or export AESTIVAL_TARGET as an environment variable." >&2
+  exit 1
+fi
+
+TARGET="$AESTIVAL_TARGET"
+REMOTE_USER="${TARGET%@*}"
+REMOTE_DIR="${AESTIVAL_REMOTE_DIR:-/home/$REMOTE_USER/aestival}"
 REMOTE_BIN="$REMOTE_DIR/bin"
 TEMP_DIR="$(mktemp -d)"
+
+# Server host key for TOFU protection.
+# Extract host from TARGET (user@1.2.3.4 → 1.2.3.4).
+HOST_ONLY="${TARGET#*@}"
+KNOWN_HOSTS_FILE="$(mktemp)"
+if [ -n "${AESTIVAL_HOST_KEY:-}" ]; then
+  echo "$HOST_ONLY $AESTIVAL_HOST_KEY" > "$KNOWN_HOSTS_FILE"
+  SSH_CMD="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_FILE"
+else
+  SSH_CMD="ssh -o StrictHostKeyChecking=accept-new"
+fi
 RESTART_SVC=false
 SYNC_BRANCH=false
-BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo shinshi)"
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
 WORKFLOW="ci.yml"
 ARTIFACT_NAME="aestival-linux-gcc"
 
@@ -49,22 +85,35 @@ done
 
 if $SYNC_BRANCH; then
   CURRENT="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+  # Safety: refuse to force-push protected branches.
+  case "$CURRENT" in
+    main|master)
+      echo "ERROR: refusing to force-push protected branch '$CURRENT'" >&2
+      exit 1
+      ;;
+  esac
   echo ":: syncing '$CURRENT' -> origin/main..."
-  git -C "$REPO_ROOT" checkout main
-  git -C "$REPO_ROOT" pull
-  git -C "$REPO_ROOT" checkout "$CURRENT"
-  git -C "$REPO_ROOT" reset --hard main
-  echo ":: done — '$CURRENT' now at main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
+  git -C "$REPO_ROOT" fetch origin main
+  git -C "$REPO_ROOT" reset --hard origin/main
+  git -C "$REPO_ROOT" push --force-with-lease origin "$CURRENT"
+  echo ":: done — '$CURRENT' force-pushed to main HEAD ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
+  echo ":: tip: re-apply any local-only config (e.g. bot_config.json tokens)"
   exit 0
 fi
 
-cleanup() { rm -rf "$TEMP_DIR"; }
+cleanup() { rm -rf "$TEMP_DIR" "$KNOWN_HOSTS_FILE"; }
 trap cleanup EXIT
 
 echo ":: deploy started at $(date '+%F %T')"
 echo "   branch=$BRANCH  target=$TARGET"
 
 # ── 1. download CI artifact ──────────────────────────────────────────────────
+
+# Check gh CLI is available and authenticated.
+if ! command -v gh &>/dev/null; then
+  echo "ERROR: 'gh' CLI not found. Install it from https://cli.github.com/ and authenticate with 'gh auth login'." >&2
+  exit 1
+fi
 
 echo ":: [1/4] finding latest CI run on branch '$BRANCH'..."
 
@@ -108,16 +157,16 @@ echo "   binary size: $(du -h "$BINARY" | cut -f1)"
 # ── 2. deploy binary & workspace (single compressed pipe) ──────────────────
 
 if $RESTART_SVC; then
-  echo ":: [2/4] stopping service..."
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
+  echo ":: [*] stopping service..."
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user stop aestival-bot.service" 2>&1 || true
   sleep 1
 fi
 
 echo ":: [3/4] deploying binary & workspace (tar.gz pipe)..."
 # Single compressed transfer: binary + workspace in one shot (~4 MB instead of 13+)
-ssh "$TARGET" "mkdir -p $REMOTE_BIN/{config,contexts,workspace}"
+$SSH_CMD "$TARGET" "mkdir -p $REMOTE_BIN/{config,contexts,workspace}"
 tar -czf - -C "$(dirname "$BINARY")" aestival -C "$REPO_ROOT/workspace" . |
-  ssh "$TARGET" "
+  $SSH_CMD "$TARGET" "
     tar -xzf - -C $REMOTE_BIN &&
     mv $REMOTE_BIN/aestival $REMOTE_BIN/aestival.new
   "
@@ -130,7 +179,7 @@ echo ":: [4/4] config..."
 
 # Config — seed from template only if none exists on the server.
 # Never overwrite an existing config (contains secrets).
-ssh "$TARGET" "
+$SSH_CMD "$TARGET" "
   if [ ! -f '$REMOTE_BIN/config/bot_config.json' ]; then
     echo '   [seed] config/bot_config.json (first deploy — edit it!)'
   else
@@ -143,7 +192,7 @@ echo "   [keep] contexts/ (untouched)"
 
 # ── 4. finalise (atomic binary swap + optional restart) ──────────────────────
 
-ssh "$TARGET" "
+$SSH_CMD "$TARGET" "
   set -e
   mv '$REMOTE_BIN/aestival.new' '$REMOTE_BIN/aestival'
   echo ':: binary atomically replaced'
@@ -153,10 +202,10 @@ echo ":: deploy finished at $(date '+%F %T')"
 
 if $RESTART_SVC; then
   echo ":: starting aestival-bot.service..."
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user start aestival-bot.service" 2>&1
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user start aestival-bot.service" 2>&1
   echo ""
   echo ":: service status:"
-  ssh "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true
+  $SSH_CMD "$TARGET" "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user --no-pager status aestival-bot.service" 2>&1 || true
 else
   echo ""
   echo "  To restart:  ./deploy.sh --restart"

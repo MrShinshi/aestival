@@ -24,6 +24,26 @@ namespace detail {
 
 namespace {
 
+/** Long-lived SSL contexts owned by the pool — avoids dangling references
+ *  when connections are pooled across coroutine invocations. */
+static ssl::context& pool_ssl_ctx(bool verify_tls) {
+	if (verify_tls) {
+		static ssl::context ctx{ssl::context::tlsv12_client};
+		return ctx;
+	}
+	static ssl::context ctx{ssl::context::tlsv12_client};
+	(void)[] {
+		ctx.set_verify_mode(ssl::verify_none);
+		return true;
+	}();
+	return ctx;
+}
+
+/** Pool key: (host, verify_tls) — keeps verified/unverified connections separate. */
+static std::string pool_key(std::string const& host, bool verify_tls) {
+	return host + (verify_tls ? "|1" : "|0");
+}
+
 struct pooled_stream {
 	ssl::stream<tcp::socket> ssl_stream;
 	std::chrono::steady_clock::time_point last_used;
@@ -35,16 +55,14 @@ struct pooled_stream {
 std::mutex pool_mutex_;
 std::unordered_map<std::string, std::shared_ptr<pooled_stream>> pool_;
 
-std::shared_ptr<pooled_stream> pool_acquire(boost::asio::io_context& ioc, ssl::context& ctx, std::string const& host) {
+std::shared_ptr<pooled_stream> pool_acquire(boost::asio::io_context& ioc, std::string const& host, bool verify_tls) {
+	auto key = pool_key(host, verify_tls);
 	std::lock_guard<std::mutex> lk(pool_mutex_);
-	auto it = pool_.find(host);
+	auto it = pool_.find(key);
 	if (it != pool_.end()) {
 		auto s = std::move(it->second);
 		pool_.erase(it);
 		// Probe liveness with a non-blocking peek read on the raw TCP socket.
-		// ONLY reuse when would_block (no data queued).  If peek returns data
-		// the kernel buffer may hold a TLS close_notify alert — the SSL layer
-		// would then fail the next read with "stream truncated".  Discard.
 		boost::beast::error_code probe_ec;
 		auto& sock = s->ssl_stream.next_layer();
 		sock.non_blocking(true);
@@ -56,41 +74,41 @@ std::shared_ptr<pooled_stream> pool_acquire(boost::asio::io_context& ioc, ssl::c
 				probe_ec = boost::asio::error::fault;
 		}
 		sock.non_blocking(false);
-		// Only would_block / try_again means clean socket (no data pending).
 		if (probe_ec == boost::asio::error::would_block || probe_ec == boost::asio::error::try_again) {
 			platform::log::debug("[http] pool reuse " + host);
 			s->last_used = std::chrono::steady_clock::now();
 			return s;
 		}
-		// Any other outcome (data peeked, eof, reset, ...) — discard connection.
 		if (!probe_ec) {
 			platform::log::debug("[http] pool evict " + host + " (data pending — possible TLS close_notify)");
 		} else {
 			platform::log::debug("[http] pool evict " + host + " (" + probe_ec.message() + ")");
 		}
 	}
-	auto s = std::make_shared<pooled_stream>(ioc, ctx);
+	auto s = std::make_shared<pooled_stream>(ioc, pool_ssl_ctx(verify_tls));
 	s->last_used = std::chrono::steady_clock::now();
 	return s;
 }
 
-void pool_release(std::string const& host, std::shared_ptr<pooled_stream> s) {
+void pool_release(std::string const& host, std::shared_ptr<pooled_stream> s, bool verify_tls) {
 	if (!s) {
 		return;
 	}
 	std::lock_guard<std::mutex> lk(pool_mutex_);
-	// Limit pool size per host
-	if (pool_.count(host) >= 3) {
+	auto key = pool_key(host, verify_tls);
+	if (pool_.count(key) >= 3) {
 		return;
 	}
 	platform::log::debug("[http] pool keep " + host);
 	s->last_used = std::chrono::steady_clock::now();
-	pool_[host] = std::move(s);
+	pool_[key] = std::move(s);
 }
 
-void pool_remove(std::string const& host) {
+[[maybe_unused]] void pool_remove(std::string const& host) {
 	std::lock_guard<std::mutex> lk(pool_mutex_);
-	pool_.erase(host);
+	// Remove both verified and unverified entries for this host
+	pool_.erase(pool_key(host, true));
+	pool_.erase(pool_key(host, false));
 }
 
 } // namespace
@@ -104,14 +122,8 @@ awaitable<std::pair<int, std::string>> http_request_async(std::string const& met
 	std::pair<int, std::string> result = {-1, ""};
 	auto executor = co_await boost::asio::this_coro::executor;
 
-	// Per-request ssl context (lightweight; pooled streams carry their own)
-	ssl::context ssl_ctx{ssl::context::tlsv12_client};
-	if (!verify_tls) {
-		ssl_ctx.set_verify_mode(ssl::verify_none);
-	}
-
 	auto& ioc = static_cast<boost::asio::io_context&>(boost::asio::query(executor, boost::asio::execution::context));
-	auto pool_stream = pool_acquire(ioc, ssl_ctx, host_param);
+	auto pool_stream = pool_acquire(ioc, host_param, verify_tls);
 	bool reused = pool_stream->ssl_stream.next_layer().is_open();
 
 	try {
@@ -127,7 +139,7 @@ awaitable<std::pair<int, std::string>> http_request_async(std::string const& met
 			}
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 			if (!SSL_set1_host(pool_stream->ssl_stream.native_handle(), sni_host.c_str())) {
-				platform::log::error("[http_client] SSL_set1_host failed");
+				throw std::runtime_error("SSL_set1_host failed for " + sni_host);
 			}
 #endif
 
@@ -188,7 +200,7 @@ awaitable<std::pair<int, std::string>> http_request_async(std::string const& met
 		}
 
 		if (keep) {
-			pool_release(host_param, std::move(pool_stream));
+			pool_release(host_param, std::move(pool_stream), verify_tls);
 		} else {
 			boost::beast::error_code ec;
 			co_await pool_stream->ssl_stream.async_shutdown(boost::asio::redirect_error(boost::asio::use_awaitable, ec));

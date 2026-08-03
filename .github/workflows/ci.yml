@@ -261,21 +261,21 @@ jobs:
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows' && matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aestival-windows-${{ matrix.compiler }}
           path: bin/aestival.exe
 
       - name: Upload artifact (Linux)
         if: runner.os == 'Linux' && matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aestival-linux-${{ matrix.compiler }}
           path: bin/aestival
 
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS' && matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aestival-macos-${{ matrix.compiler }}
           path: bin/aestival

@@ -2,8 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  Activity,
-  BarChart3,
+  LayoutDashboard,
   Bot,
   MessageSquare,
   FileText,
@@ -19,30 +18,20 @@ import {
 import { APP_VERSION } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-type NavSection = 'overview' | 'manage' | 'account';
-
 interface NavItem {
   to: string;
   label: string;
   Icon: React.ComponentType<{ size?: number; 'aria-hidden'?: boolean }>;
   adminOnly?: boolean;
-  section: NavSection;
 }
 
-const sections: { key: NavSection; title: string }[] = [
-  { key: 'overview', title: '概览' },
-  { key: 'manage', title: '管理' },
-  { key: 'account', title: '账户' },
-];
-
 const navItems: NavItem[] = [
-  { to: '/', label: '状态', Icon: Activity, section: 'overview' },
-  { to: '/metrics', label: '指标', Icon: BarChart3, adminOnly: true, section: 'overview' },
-  { to: '/agents', label: 'Agent', Icon: Bot, adminOnly: true, section: 'manage' },
-  { to: '/conversations', label: '对话', Icon: MessageSquare, adminOnly: true, section: 'manage' },
-  { to: '/plugins', label: '插件', Icon: Puzzle, adminOnly: true, section: 'manage' },
-  { to: '/logs', label: '日志', Icon: FileText, adminOnly: true, section: 'manage' },
-  { to: '/settings', label: '设置', Icon: Settings, section: 'account' },
+  { to: '/', label: '仪表盘', Icon: LayoutDashboard },
+  { to: '/agents', label: 'Agent', Icon: Bot, adminOnly: true },
+  { to: '/conversations', label: '对话', Icon: MessageSquare, adminOnly: true },
+  { to: '/logs', label: '日志', Icon: FileText, adminOnly: true },
+  { to: '/plugins', label: '插件', Icon: Puzzle, adminOnly: true },
+  { to: '/settings', label: '设置', Icon: Settings },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -118,38 +107,25 @@ export default function Layout({ children }: { children: ReactNode }) {
             </button>
           </div>
 
-          {/* Navigation — grouped by section, admin-only items filtered */}
-          <nav className="flex-1 p-2 overflow-y-auto">
-            {sections.map(section => {
-              const items = visibleItems.filter(item => item.section === section.key);
-              if (items.length === 0) return null;
-              return (
-                <div key={section.key} className="mb-1">
-                  <div className="px-3 pt-3 pb-1 text-[11px] uppercase tracking-wider text-gray-600 font-medium">
-                    {section.title}
-                  </div>
-                  <div className="space-y-0.5">
-                    {items.map(({ to, label, Icon }) => (
-                      <NavLink
-                        key={to}
-                        to={to}
-                        end={to === '/'}
-                        className={({ isActive }) =>
-                          `flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
-                            isActive
-                              ? 'bg-indigo-900/50 text-indigo-300'
-                              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                          }`
-                        }
-                      >
-                        <Icon size={16} aria-hidden={true} />
-                        {label}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+          {/* Navigation */}
+          <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+            {visibleItems.map(({ to, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+                    isActive
+                      ? 'bg-indigo-900/50 text-indigo-300'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                  }`
+                }
+              >
+                <Icon size={16} aria-hidden={true} />
+                {label}
+              </NavLink>
+            ))}
           </nav>
 
           {/* User section */}

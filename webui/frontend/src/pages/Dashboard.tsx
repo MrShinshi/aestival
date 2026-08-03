@@ -26,7 +26,7 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
-export default function Metrics() {
+export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('overview');
 
   const statusQ = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 10_000 });
@@ -62,7 +62,7 @@ export default function Metrics() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold mb-6">指标</h2>
+      <h2 className="text-xl font-bold mb-6">仪表盘</h2>
 
       {error && (
         <div className="bg-red-900/50 text-red-400 p-3 rounded mb-4 text-sm">

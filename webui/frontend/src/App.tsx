@@ -6,8 +6,7 @@ import ProtectedRoute, { AdminRoute } from './components/ProtectedRoute';
 import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import AuthCallback from './pages/AuthCallback';
-import Status from './pages/Status';
-import Metrics from './pages/Metrics';
+import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Logs from './pages/Logs';
@@ -31,12 +30,11 @@ export default function App() {
               <Layout>
                 <ErrorBoundary>
                   <Routes>
-                    {/* Everyone can see the status page and settings */}
-                    <Route path="/" element={<Status />} />
+                    {/* Everyone can see dashboard and settings */}
+                    <Route path="/" element={<Dashboard />} />
                     <Route path="/settings" element={<Settings />} />
 
                     {/* Admin-only */}
-                    <Route path="/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
                     <Route path="/agents" element={<AdminRoute><Agents /></AdminRoute>} />
                     <Route path="/conversations" element={<AdminRoute><Conversations /></AdminRoute>} />
                     <Route path="/logs" element={<AdminRoute><Logs /></AdminRoute>} />

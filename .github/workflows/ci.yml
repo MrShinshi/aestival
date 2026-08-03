@@ -25,7 +25,7 @@ jobs:
       backend_deps: ${{ steps.detect.outputs.backend_deps }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # we need the 'before' commit for git diff
 
@@ -90,7 +90,7 @@ jobs:
             vcpkg_root: /usr/local/share/vcpkg
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup MSVC
         if: runner.os == 'Windows' && matrix.compiler == 'msvc'
@@ -328,7 +328,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

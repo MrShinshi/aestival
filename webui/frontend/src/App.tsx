@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './lib/auth';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import PWAUpdateToast from './components/PWAUpdateToast';
 import ProtectedRoute, { AdminRoute } from './components/ProtectedRoute';
 import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
@@ -16,6 +17,7 @@ import Plugins from './pages/Plugins';
 export default function App() {
   return (
     <AuthProvider>
+      <PWAUpdateToast />
       <Routes>
         {/* Public routes — no sidebar, no auth guard */}
         <Route path="/login" element={<LoginPage />} />

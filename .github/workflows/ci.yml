@@ -42,6 +42,18 @@ jobs:
             exit 0
           fi
 
+          # Branch creation (first push to a new branch): github.event.before is
+          # the all-zero SHA, so there is no previous commit to diff against and
+          # `git diff` fails with exit 128.  Treat it as "everything changed" and
+          # run the full build instead.
+          if [ '${{ github.event.before }}' = '0000000000000000000000000000000000000000' ]; then
+            echo 'cpp=true'           >> "$GITHUB_OUTPUT"
+            echo 'webui=true'         >> "$GITHUB_OUTPUT"
+            echo 'backend_deps=true'  >> "$GITHUB_OUTPUT"
+            echo ':: branch created — running full build'
+            exit 0
+          fi
+
           # Push: diff against the previous commit to skip unaffected jobs.
           CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
           echo ':: changed files:'

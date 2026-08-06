@@ -33,12 +33,13 @@ if(NOT VCPKG_BOOTSTRAPPED AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
         message(STATUS "vcpkg checkout not found — acquiring into")
         message(STATUS "  ${VCPKG_ROOT}")
 
-        # 1) try git clone (fast, small download) — pinned to a known-good commit
+        # 1) try git clone (full history so vcpkg version resolution works;
+        #    shallow clones cannot unpack older port version trees)
         find_package(Git QUIET)
         if(GIT_FOUND)
             execute_process(
-                COMMAND "${GIT_EXECUTABLE}" clone --depth 1
-                        --branch 2025.01.19
+                COMMAND "${GIT_EXECUTABLE}" clone
+                        --branch 2026.07.29
                         "https://github.com/microsoft/vcpkg.git"
                         "${VCPKG_ROOT}"
                 RESULT_VARIABLE git_result
@@ -47,14 +48,14 @@ if(NOT VCPKG_BOOTSTRAPPED AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
 
         # 2) fallback to zip download (pinned release)
         if(NOT GIT_FOUND OR NOT git_result EQUAL 0)
-            set(zip "${CMAKE_BINARY_DIR}/vcpkg-2025.01.19.zip")
+            set(zip "${CMAKE_BINARY_DIR}/vcpkg-2026.07.29.zip")
             set(extract_root "${CMAKE_BINARY_DIR}/vcpkg-bootstrap")
-            set(extracted_vcpkg "${extract_root}/vcpkg-2025.01.19")
+            set(extracted_vcpkg "${extract_root}/vcpkg-2026.07.29")
             file(REMOVE_RECURSE "${extract_root}")
             file(MAKE_DIRECTORY "${extract_root}")
             message(STATUS "git unavailable — downloading vcpkg zip …")
             file(DOWNLOAD
-                "https://github.com/microsoft/vcpkg/archive/refs/tags/2025.01.19.zip"
+                "https://github.com/microsoft/vcpkg/archive/refs/tags/2026.07.29.zip"
                 "${zip}"
                 SHOW_PROGRESS STATUS dl_status
             )

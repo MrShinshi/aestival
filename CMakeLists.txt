@@ -35,6 +35,7 @@ if(NOT VCPKG_BOOTSTRAPPED AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
 
         # 1) try git clone (full history so vcpkg version resolution works;
         #    shallow clones cannot unpack older port version trees)
+        #    NOTE: first run requires network access to github.com.
         find_package(Git QUIET)
         if(GIT_FOUND)
             execute_process(
